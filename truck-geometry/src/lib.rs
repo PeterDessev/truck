@@ -32,6 +32,9 @@ pub mod base {
 /// Declares the nurbs
 pub mod nurbs;
 
+// Declare T splines
+pub mod t_spline;
+
 /// Enumerats `Error`.
 pub mod errors;
 

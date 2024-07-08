@@ -169,6 +169,29 @@ the number of control points: {1}"
     /// ```
     #[error("The vector of control points and the one of weights have different length.")]
     DifferentLength,
+
+    #[error("Cannot connect T-mesh control point to an existing connection.")]
+    TMeshExistingConnection,
+
+    #[error("Cannot locate the desired control point in the T-mesh.")]
+    TMeshControlPointNotFound,
+
+    #[error("T-mesh connection does not exist.")]
+    TMeshConnectionNotFound,
+
+    #[error("T-mesh knot ratios for new connections must be between 0.0 and 1.0.")]
+    TMeshInvalidKnotRatio,
+
+    #[error("T-mesh knot intervals on a connection do not match in both directions.")]
+    TMeshConnectionInvalidKnotInterval,
+
+    #[error("An uknown T-mesh error occured, and you should not be seeing this message. Please contact the developers.")]
+    TMeshUnkownError,
+
+    
+    // #[error("T-mesh knot intervals are not equal for opposing face edges.")]
+    // TMeshInvalidFaceKnots,
+
 }
 
 #[test]
