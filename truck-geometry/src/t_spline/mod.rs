@@ -13,12 +13,19 @@
 //!     *T-splines and T-NURCCs*. ACM Transactions on Graphics (TOG). 22. 477-484.
 //!     10.1145/882262.882295.
 
-use std::rc::Rc;
-use std::cell::RefCell;
-
 use crate::{prelude::*, *};
+use std::cell::RefCell;
+use std::rc::Rc;
+use truck_base::cgmath64::control_point::ControlPoint;
 
 pub type TMeshConnection<P> = (Option<Rc<RefCell<TMeshControlPoint<P>>>>, f64);
+
+#[derive(Clone, PartialEq, Debug)]
+pub enum TMeshConnectionType {
+    Point,
+    Edge,
+    Tjunction,
+}
 /// # T-mesh control point
 ///
 /// Described in \[Sederberg et al. 2003\].
@@ -32,11 +39,10 @@ pub struct TMeshControlPoint<P> {
     // For details, see Figure 8 of [Sederberg et al. 2003].
     connections: [Option<TMeshConnection<P>>; 4],
 
-    // The "absolute" knot coordinates of the control point in the context of the mesh. 
-    // (horrizontal, virtical), RIGHT and UP are the directions in which a delta corresponds
+    // The "absolute" knot coordinates of the control point in the context of the mesh.
+    // (horizontal, virtical), RIGHT and UP are the directions in which a delta corresponds
     // to a positive increase in knot coordinates
     knot_coordinates: (f64, f64),
-
 }
 
 /// # T-mesh
@@ -46,11 +52,10 @@ pub struct TMeshControlPoint<P> {
 /// possible connections with other adjacent points in the mesh. Each connection has
 /// a knot interval, which may be any number greater than or equal to 0.
 #[derive(Clone, PartialEq, Debug)]
-pub struct TMesh<P>
-where
-    P: PartialEq,
-{
+pub struct TMesh<P> {
     control_points: Vec<Rc<RefCell<TMeshControlPoint<P>>>>,
+
+    knot_vectors: Option<Vec<(KnotVec, KnotVec)>>,
 }
 
 /// # TMeshDirrection

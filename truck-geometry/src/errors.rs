@@ -188,6 +188,11 @@ the number of control points: {1}"
     #[error("An uknown T-mesh error occured, and you should not be seeing this message. Please contact the developers.")]
     TMeshUnkownError,
 
+    #[error("The T-mesh is malformed and should no longer be used.")]
+    TMeshMalformedMesh,
+
+    #[error("A knot could not be inserted into the mesh at the desired location without violating Rule 3")]
+    TMeshKnotVectorsNotEqual,
     
     // #[error("T-mesh knot intervals are not equal for opposing face edges.")]
     // TMeshInvalidFaceKnots,
