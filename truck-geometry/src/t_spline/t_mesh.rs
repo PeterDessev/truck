@@ -1005,30 +1005,6 @@ impl<P> TMesh<P> {
         // is reached, the accumulation is greater than the measurement, or the two are equal.
         let mut ic_knot_accumulation = 0.0;
         loop {
-            // Ic found
-            if (ic_knot_measurment - ic_knot_accumulation).so_small() {
-                TMeshControlPoint::connect(
-                    Rc::clone(&p),
-                    Rc::clone(&cur_point),
-                    cur_dir.clockwise(),
-                    ic_knot_interval,
-                )
-                .map_err(|_| Error::TMeshUnkownError)?;
-                return Ok(true);
-
-            // Ic not possible, knot accumulation surpassed measurment or reached face corner.
-            // Shouldn't need corner detection due to rule 1 in [Sederberg et al. 2003].
-            // (needs testing)
-            } else if ic_knot_accumulation > ic_knot_measurment
-                || cur_point
-                    .borrow()
-                    .get(cur_dir.anti_clockwise())
-                    .as_ref()
-                    .map_or(true, |c| c.0.is_none())
-            {
-                return Ok(false);
-            }
-
             ic_knot_accumulation += cur_point
                 .borrow()
                 .get(cur_dir)
@@ -1049,6 +1025,27 @@ impl<P> TMesh<P> {
 
                 Rc::clone(&point)
             };
+
+            // Ic found
+            if (ic_knot_measurment - ic_knot_accumulation).so_small() {
+                TMeshControlPoint::connect(
+                    Rc::clone(&p),
+                    Rc::clone(&cur_point),
+                    cur_dir.clockwise(),
+                    ic_knot_interval,
+                )
+                .map_err(|_| Error::TMeshUnkownError)?;
+                return Ok(true);
+
+            // Ic not possible, knot accumulation surpassed measurment or reached face corner.
+            // Shouldn't need corner detection due to rule 1 in [Sederberg et al. 2003].
+            // (needs testing)
+            } else if ic_knot_accumulation > ic_knot_measurment
+                || cur_point.borrow().con_type(cur_dir.anti_clockwise())
+                    == TMeshConnectionType::Point
+            {
+                return Ok(false);
+            }
         }
     }
 
