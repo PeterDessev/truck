@@ -89,13 +89,13 @@ impl TMeshDirection {
 impl fmt::Display for TMeshDirection {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let dir_string = match self {
-            TMeshDirection::UP => String::from("up"),
-            TMeshDirection::DOWN => String::from("down"),
-            TMeshDirection::LEFT => String::from("left"),
-            TMeshDirection::RIGHT => String::from("right"),
+            TMeshDirection::UP => "up",
+            TMeshDirection::DOWN => "down",
+            TMeshDirection::LEFT => "left",
+            TMeshDirection::RIGHT => "right",
         };
 
-        write!(f, "{dir_string}")
+        write!(f, "{}", dir_string)
     }
 }
 
@@ -174,17 +174,16 @@ impl<P> TMeshControlPoint<P> {
     ///
     /// - `Ok` if the connection was modified.
     pub fn set_edge_con_weight(&mut self, dir: TMeshDirection, weight: f64) -> Result<()> {
-        match self.get_mut(dir) {
-            Some(connection) => {
-                // If the connection is not an edge condition, return an error.
-                if connection.0.is_some() {
-                    return Err(Error::TMeshExistingConnection);
-                }
-
-                connection.1 = weight;
-                return Ok(());
+        if let Some(connection) = self.get_mut(dir) {
+            // If the connection is not an edge condition, return an error.
+            if connection.0.is_some() {
+                return Err(Error::TMeshExistingConnection);
             }
-            None => Err(Error::TMeshConnectionNotFound),
+
+            connection.1 = weight;
+            return Ok(());
+        } else {
+            return Err(Error::TMeshConnectionNotFound);
         }
     }
 
@@ -204,25 +203,24 @@ impl<P> TMeshControlPoint<P> {
     ///
     /// - `Ok` if the connection was successfully removed.
     pub fn remove_connection(&mut self, dir: TMeshDirection) -> Result<()> {
-        match &mut self.connections[dir as usize] {
-            Some(connection) => {
-                // If the connection is not an edge condition, modify the connected point
-                if connection.0.is_some() {
-                    let mut borrow = connection
-                        .0
-                        .as_mut()
-                        .unwrap()
-                        .try_borrow_mut()
-                        .map_err(|_| Error::TMeshControlPointNotFound)?;
+        if let Some(connection) = &mut self.connections[dir as usize] {
+            // If the connection is not an edge condition, modify the connected point
+            if connection.0.is_some() {
+                let mut borrow = connection
+                    .0
+                    .as_mut()
+                    .unwrap()
+                    .try_borrow_mut()
+                    .map_err(|_| Error::TMeshControlPointNotFound)?;
 
-                    // The connected point is connected to self on the opposite side
-                    borrow.connections[dir.flip() as usize] = None;
-                }
-
-                self.connections[dir as usize] = None;
-                return Ok(());
+                // The connected point is connected to self on the opposite side
+                borrow.connections[dir.flip() as usize] = None;
             }
-            None => Err(Error::TMeshConnectionNotFound),
+
+            self.connections[dir as usize] = None;
+            return Ok(());
+        } else {
+            return Err(Error::TMeshConnectionNotFound);
         }
     }
 
@@ -334,21 +332,15 @@ impl<P> TMeshControlPoint<P> {
     pub fn con_type(&self, dir: TMeshDirection) -> TMeshConnectionType {
         // The first option differentiates between a T-junction and a knotted (weighted)
         // connection (edge condition or connection to another point).
-        match self.get(dir).as_ref() {
-            Some(con) => {
-                // This option differentiates between a point connection and an edge condition.
-                match con.0 {
-                    Some(_) => {
-                        return TMeshConnectionType::Point;
-                    }
-                    None => {
-                        return TMeshConnectionType::Edge;
-                    }
-                }
+        if let Some(con) = self.get(dir).as_ref() {
+            // This option differentiates between a point connection and an edge condition.
+            if con.0.is_some() {
+                return TMeshConnectionType::Point;
+            } else {
+                return TMeshConnectionType::Edge;
             }
-            None => {
-                return TMeshConnectionType::Tjunction;
-            }
+        } else {
+            return TMeshConnectionType::Tjunction;
         }
     }
 
@@ -395,31 +387,25 @@ impl<P> TMeshControlPoint<P> {
         traverse: TMeshDirection,
         monitor: TMeshDirection,
     ) -> Result<(Rc<RefCell<Self>>, f64)> {
-        let first = self.get(traverse);
-
-        // Check initial conditions
-        if first.is_none() {
-            return Err(Error::TMeshConnectionNotFound);
-        }
-
-        if first
-            .as_ref()
-            .expect("Previously unwrapped option")
-            .0
-            .is_none()
-        {
-            return Err(Error::TMeshControlPointNotFound);
-        }
-
-        // Begin traversing (Think of this as a do {} while loop, where this let block is the
+        // Begin traversing (Think of this as a do while loop, where this let block is the
         // first "do" iteration)
         let (mut cur_point, mut knot_acc) = {
-            let connection = first.as_ref().expect("Previously unwrapped option");
-            let point = Rc::clone(&connection.0.as_ref().expect("Previously unwrapped option"));
-            let interval = connection.1;
+            let first = self.get(traverse);
 
-            (point, interval)
+            // Check initial conditions
+            if let Some(con) = first {
+                if let Some(point) = con.0.as_ref() {
+                    let point = Rc::clone(point);
+                    let interval = con.1;
+                    (point, interval)
+                } else {
+                    return Err(Error::TMeshControlPointNotFound);
+                }
+            } else {
+                return Err(Error::TMeshConnectionNotFound);
+            }
         };
+
         'traverse: loop {
             // Traverse to the next point
             cur_point = {
@@ -428,25 +414,20 @@ impl<P> TMeshControlPoint<P> {
                 // Found the desired connection
                 if borrow.get(monitor).as_ref().is_some_and(|c| c.0.is_some()) {
                     break 'traverse;
-
-                // Encountered an unexpected T-junction
-                } else if borrow.get(traverse).is_none() {
-                    return Err(Error::TMeshConnectionNotFound);
-
-                // Encountered an unexpected edge condition
-                } else if borrow.get(traverse).as_ref().unwrap().0.is_none() {
-                    return Err(Error::TMeshControlPointNotFound);
                 }
 
-                let connection = borrow
-                    .get(traverse)
-                    .as_ref()
-                    .expect("Previously unwrapped option");
-
-                // Accumulate knot interval
-                knot_acc += connection.1;
-
-                Rc::clone(connection.0.as_ref().expect("Previously unwrapped option"))
+                // Check for T-junction
+                if let Some(con) = borrow.get(traverse) {
+                    // Check for edge condition
+                    if let Some(point) = con.0.as_ref() {
+                        knot_acc += con.1;
+                        Rc::clone(point)
+                    } else {
+                        return Err(Error::TMeshControlPointNotFound);
+                    }
+                } else {
+                    return Err(Error::TMeshConnectionNotFound);
+                }
             };
         }
 
