@@ -88,4 +88,6 @@ pub struct TNURCC<P> {
     control_points: Vec<Rc<TnurccControlPoint<P>>>,
 }
 
+mod t_mesh_direction;
+mod t_mesh_control_point;
 mod t_mesh;
