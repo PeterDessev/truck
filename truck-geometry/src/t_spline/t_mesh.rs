@@ -378,7 +378,7 @@ impl<P> TMeshControlPoint<P> {
 
     /// Navigates from `self` in the direction `traverse` until a connection is found in the direction `monitor`,
     /// returning a tuple of the point at which that connection was found and the knot interval traversed.
-    /// Assumes that `self` has no connection in direction `monitor`
+    /// Assumes that `self` has no connection in direction `monitor`.
     ///
     /// # Returns
     /// - `TMeshConnectionNotFound` if a T junction is found in the direction `traverse` while traversing.
@@ -788,6 +788,152 @@ impl<P> TMesh<P> {
         self.generate_knot_vectors()
             .map_err(|_| Error::TMeshMalformedMesh)?;
         Ok(())
+    }
+
+    /// Attemps to add a control point to the mesh given the cartesian point `p` and the absolute knot coordinates `knot_coords`
+    /// in the form `(s, t)`. In order for insertion to succeed, there must either be an S or T edge located at the parametric
+    /// point `knot_coords` in the mesh `self`. Note that zero knot insertions will return an error, as the side on which to
+    /// insert the zero knot is ambiguous.
+    ///
+    /// # Returns
+    /// - `TMeshConnectionInvalidKnotInterval` if either knot coordinate in `knot_coords` is not in the range (0, 1).
+    ///
+    /// - `TMeshExistingControlPoint` if a control point already exists at parametric coordinates `knot_coords`.
+    ///
+    /// - `TMeshMalformedMesh` if multiple edges are found which intersect the location of the new point.
+    ///
+    /// - `TMeshConnectionNotFound` if no edges are found which intersect the location of the new point.
+    ///
+    /// - `Ok(())` if the control point was successfully added.
+    ///
+    /// # Borrows
+    /// Immutably borrows every point in the mesh `self`.
+    pub fn try_add_absolute_point(&mut self, p: P, knot_coords: (f64, f64)) -> Result<()> {
+        // Make sure desred knot coordinates are within msh bounds
+        if knot_coords.0 < 0.0 || knot_coords.0 > 1.0 || knot_coords.1 < 0.0 || knot_coords.1 > 1.0
+        {
+            return Err(Error::TMeshConnectionInvalidKnotInterval);
+        }
+
+        // If a point already exists at the desired knot coordinates, return an error. Zero knot intervals can be put
+        // on any side of a point and still have the same knot coordinates, but the structure of the mesh will not be
+        // different. Thus, zero knot insertion must be done manually.
+        if self
+            .control_points
+            .iter()
+            .find(|c| {
+                let c_coords = c.borrow().get_knot_coordinates();
+                let comparison = (c_coords.0 - knot_coords.0, c_coords.1 - knot_coords.1);
+                comparison.0.so_small() && comparison.1.so_small()
+            })
+            .is_some()
+        {
+            return Err(Error::TMeshExistingControlPoint);
+        }
+
+        // The function checks for any T or S edges that intersect the point in paramtric space where the
+        // point is to be insertet, then computes the knot ratio needed such that the point is inserted
+        // at the correct place and inserts it using add_control_point.
+
+        // Check for any T edges which intersect the parametric location of the new point.
+        let mut point_t_coord = 0.0;
+        let mut con_knot = 0.0;
+        let s_axis_stradle_points = self
+            .control_points
+            .iter()
+            // Filter all points along the S axis of inserton
+            .filter(|point| (point.borrow().get_knot_coordinates().0 - knot_coords.0).so_small())
+            // Filter those points to only include the point that stradles the T axis of insertion
+            .filter(|point| {
+                if let Some(con) = point.borrow().get(TMeshDirection::UP) {
+                    let temp_t_coord = point.borrow().get_knot_coordinates().1;
+                    let temp_inter = con.1;
+
+                    // Knot of the new point is located on the connection being investigated?
+                    if temp_t_coord < knot_coords.1 && temp_t_coord + temp_inter > knot_coords.1 {
+                        point_t_coord = temp_t_coord; // T coordinate of the current point
+                        con_knot = temp_inter; // Edge knot interval
+
+                        return true;
+                    }
+                }
+                false
+            })
+            .map(|point| Rc::clone(point))
+            .collect::<Vec<Rc<RefCell<TMeshControlPoint<P>>>>>();
+
+        // Depending on the number of points whose connections intersect the location of the new point,
+        // different errors or actions are taken
+        match s_axis_stradle_points.len() {
+            // No T-edge instersects the point where the point needs to be inserted,
+            // try to find an S edge which intersects the location of the point
+            0 => {}
+            1 => {
+                // A T-edge is found where the point intersects
+                return self
+                    .add_control_point(
+                        p,
+                        Rc::clone(&s_axis_stradle_points[0]),
+                        TMeshDirection::UP,
+                        (knot_coords.1 - point_t_coord) / con_knot,
+                    )
+                    .map_err(|_| Error::TMeshUnkownError);
+            }
+            _ => {
+                // Multiple T-edges are found where the point intersects (Should never happen)
+                return Err(Error::TMeshMalformedMesh);
+            }
+        };
+
+        let mut point_s_coord = 0.0;
+        let mut con_knot = 0.0;
+        let t_axis_stradle_points = self
+            .control_points
+            .iter()
+            // Filter all points along the T axis of inserton
+            .filter(|point| (point.borrow().get_knot_coordinates().1 - knot_coords.1).so_small())
+            // Filter those points to only include the point that stradles the S axis of insertion
+            .filter(|point| {
+                if let Some(con) = point.borrow().get(TMeshDirection::RIGHT) {
+                    let temp_s_coord = point.borrow().get_knot_coordinates().0;
+                    let temp_inter = con.1;
+
+                    // Knot of the new point is located on the connection being investigated?
+                    if temp_s_coord < knot_coords.0 && temp_s_coord + temp_inter > knot_coords.0 {
+                        point_s_coord = temp_s_coord; // S coordinate of the current point
+                        con_knot = temp_inter; // Edge knot interval
+
+                        return true;
+                    }
+                }
+                false
+            })
+            .map(|point| Rc::clone(point))
+            .collect::<Vec<Rc<RefCell<TMeshControlPoint<P>>>>>();
+
+        // Depending on the number of points whose connections intersect the location of the new point,
+        // different errors or actions are taken
+        match t_axis_stradle_points.len() {
+            0 => {
+                // No S-edge instersects the point where the point needs to be inserted, return an error
+                return Err(Error::TMeshConnectionNotFound);
+            }
+            1 => {
+                // An S-edge is found where the point intersects
+                return self
+                    .add_control_point(
+                        p,
+                        Rc::clone(&t_axis_stradle_points[0]),
+                        TMeshDirection::RIGHT,
+                        (knot_coords.0 - point_s_coord) / con_knot,
+                    )
+                    .map_err(|_| Error::TMeshUnkownError);
+            }
+            _ => {
+                // Multiple S-edges are found where the point intersects (Should never happen)
+                return Err(Error::TMeshMalformedMesh);
+            }
+        };
     }
 
     /// Generates the S and T knot vectors for a particular point. The returned tuple is of the form `(S_vector, T_vector)`,
@@ -1431,13 +1577,13 @@ where
             / (d[2] + d[3] + d[4] + d[5]);
 
         let p3_prime = ((center_points[1].borrow().point().clone() * (d[3] + d[4]))
-                + (center_points[3].borrow().point().clone().to_vec() * (d[1] + d[2])))
-                / (d[1] + d[2] + d[3] + d[4]);
+            + (center_points[3].borrow().point().clone().to_vec() * (d[1] + d[2])))
+            / (d[1] + d[2] + d[3] + d[4]);
 
         center_points[1].borrow_mut().set_point(p2_prime);
         center_points[2].borrow_mut().set_point(p3_prime);
         center_points[3].borrow_mut().set_point(p4_prime);
-        
+
         Ok(())
     }
 }
@@ -1445,34 +1591,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// Constructs the following T-mesh  using various constructors and expecting certain
-    /// connections to be automatically created according to the rules that govern a
-    /// T-mesh as enumerated in  \[Sederberg et al. 2003\]. The '!' character indicates
-    /// that an edge will not be explicitly created, but is required to exist by the T-mesh rules.
-    ///
-    /// ```
-    ///   |   |   |
-    /// --+---+---+-- 2
-    ///   |   !   |
-    ///   |   +---+-- 1
-    ///   |   !   |
-    /// --+---+---+-- 0
-    ///   |   |   |
-    ///   0   2   4
-    /// ```
-    // fn construct_test_tmesh() {
-    // let mesh = TMesh::new(Point3::from((0.0, 0.0, 0.0)));
-
-    // // Add control points starting from the top left, going clockwise
-    // mesh.add(mesh.get((0, 0, 0)), (0, 2, 0), TMeshDirection::UP, 2)
-    //     .unwrap();
-    // control_points.push(control_points[0].connect_new((0, 2, 0), TMeshDirection::UP, 2));
-    // control_points.push(control_points[0].connect_new((2, 0, 0), TMeshDirection::RIGHT, 2));
-
-    // let other_control_point = TMeshControlPoint::from(());
-    // mesh.add_knot()
-    // }
 
     /// Returns a result which provides information regarding the connection of two points on
     /// `point`'s connection in the direction `dir`.
@@ -1655,7 +1773,7 @@ mod tests {
                 .borrow()
                 .get(TMeshDirection::UP)
                 .as_ref()
-                .is_some_and(|c| c.0.is_none() && c.1 == 1.0),
+                .is_some_and(|c| c.0.is_none() && (c.1 - 1.0).so_small()),
             "Top middle edge condition (direction UP) is incorrectly configured"
         );
 
@@ -1728,12 +1846,13 @@ mod tests {
         let inferred_con_interval = {
             let borrow = top_mid.borrow();
 
-            borrow
+            (borrow
                 .get(TMeshDirection::DOWN)
                 .as_ref()
                 .expect("Connection should exist")
                 .1
-                == 1.0
+                - 1.0)
+                .so_small()
         };
         assert!(
             inferred_con_interval,
@@ -1741,8 +1860,62 @@ mod tests {
         );
     }
 
+    /// Tests to make sure that a mesh with the following shape is correctly formed and connected. Knot intervals may be arbitrary,
+    /// however, cartesian points must be located on a 0.5 spaced grid with a 0 z-coordinate. Thus, the center point is
+    /// located at `(0.5, 0.5, 0)` and so on.
+    /// ```
+    ///    |  |  |
+    ///  --+--+--+--
+    ///    |  |  |
+    ///  --+--+--+--
+    ///    |  |  |
+    ///  --+--+--+--
+    ///    |  |  |
+    /// ```
+    fn test_t_mesh_plus_mesh(mesh: &TMesh<Point3>) {
+        let middle = mesh.find(Point3::from((0.5, 0.5, 0.0))).unwrap();
+
+        // Test connections in the four directions
+        let up_con = test_points_are_connected(
+            Rc::clone(&middle),
+            Rc::clone(&mesh.find(Point3::from((0.5, 1.0, 0.0))).unwrap()),
+            TMeshDirection::UP,
+        );
+        assert!(up_con.is_ok(), "Middle is not correctly connected to UP");
+
+        let right_con = test_points_are_connected(
+            Rc::clone(&middle),
+            Rc::clone(&mesh.find(Point3::from((1.0, 0.5, 0.0))).unwrap()),
+            TMeshDirection::RIGHT,
+        );
+        assert!(
+            right_con.is_ok(),
+            "Middle is not correctly connected to RIGHT"
+        );
+
+        let down_con = test_points_are_connected(
+            Rc::clone(&middle),
+            Rc::clone(&mesh.find(Point3::from((0.5, 0.0, 0.0))).unwrap()),
+            TMeshDirection::DOWN,
+        );
+        assert!(
+            down_con.is_ok(),
+            "Middle is not correctly connected to DOWN"
+        );
+
+        let left_con = test_points_are_connected(
+            Rc::clone(&middle),
+            Rc::clone(&mesh.find(Point3::from((0.0, 0.5, 0.0))).unwrap()),
+            TMeshDirection::LEFT,
+        );
+        assert!(
+            left_con.is_ok(),
+            "Middle is not correctly connected to LEFT"
+        );
+    }
+
     /// Constructs a T-mesh, testing that inserting a new control point with two inferred connections
-    /// produces the correct result.
+    /// produces the correct result. Utilizes the `add_control_point` function for point insertion.
     ///
     /// ```
     ///    |  |  |
@@ -1753,7 +1926,8 @@ mod tests {
     ///  --+--+--+--
     ///    |  |  |
     /// ```
-    /// `[+]` is the inserted control point, which is tested. The control point is inserted on the `DOWN` connection of `<+>`, and the connections marked `~` are inferred connections which should exist after `[+]` is inserted.
+    /// `[+]` is the inserted control point, which is tested. The control point is inserted on the `DOWN` connection of
+    /// `<+>`, and the connections marked `~` are inferred connections which should exist after `[+]` is inserted.
     #[test]
     fn test_t_mesh_insert_control_point_two_inferred_connections() {
         let points = [
@@ -1798,47 +1972,380 @@ mod tests {
         )
         .expect("Arguments provided to add_control_point are valid and insertion is allowed");
 
-        let middle = mesh.find(Point3::from((0.5, 0.5, 0.0))).unwrap();
+        test_t_mesh_plus_mesh(&mesh);
+    }
 
-        // Test connections in the four directions
-        let left_mid_con = test_points_are_connected(
-            Rc::clone(&middle),
-            Rc::clone(&mesh.find(Point3::from((0.5, 1.0, 0.0))).unwrap()),
+    /// Constructs a T-mesh, testing that inserting a new control point with two inferred connections
+    /// produces the correct result. Utilizes the `try_add_absolute_point` function for point insertion.
+    ///
+    /// ```
+    ///    |  |  |
+    ///  --+-<+>-+--
+    ///    |  |  |
+    ///  --+~[+]~+--
+    ///    |  |  |
+    ///  --+--+--+--
+    ///    |  |  |
+    /// ```
+    /// `[+]` is the inserted control point, which is tested. The control point is inserted on the `DOWN` connection of
+    /// `<+>`, and the connections marked `~` are inferred connections which should exist after `[+]` is inserted.
+    #[test]
+    fn test_t_mesh_try_add_absolute_point_mesh_construction() {
+        let points = [
+            Point3::from((0.0, 0.0, 0.0)),
+            Point3::from((1.0, 0.0, 0.0)),
+            Point3::from((1.0, 1.0, 0.0)),
+            Point3::from((0.0, 1.0, 0.0)),
+        ];
+
+        let mut mesh = TMesh::new(points, 1.0);
+
+        // Insert virtical aspect of the plus
+        mesh.try_add_absolute_point(Point3::from((0.0, 0.5, 0.0)), (0.0, 0.5))
+            .expect("Legal point insertion");
+        mesh.try_add_absolute_point(Point3::from((1.0, 0.5, 0.0)), (1.0, 0.5))
+            .expect("Legal point insertion");
+
+        // Insert horrizontal aspect of the plus
+        mesh.try_add_absolute_point(Point3::from((0.5, 0.0, 0.0)), (0.5, 0.0))
+            .expect("Legal point insertion");
+        mesh.try_add_absolute_point(Point3::from((0.5, 1.0, 0.0)), (0.5, 1.0))
+            .expect("Legal point insertion");
+
+        // Insert center point of the plus
+        mesh.try_add_absolute_point(Point3::from((0.5, 0.5, 0.0)), (0.5, 0.5))
+            .expect("Legal point insertion");
+
+        test_t_mesh_plus_mesh(&mesh);
+    }
+
+    /// Constructs the following T-mesh, testing that inserting a new control point using
+    /// `try_add_absolute_point` function produces a point with the correct knot intervals.
+    ///
+    /// ```
+    ///    |       |
+    ///  --+-------+--
+    ///    |       |
+    ///  --+-+-----+--
+    ///    | |     |
+    /// ```
+    #[test]
+    fn test_t_mesh_try_add_absolute_point_knot_intervals() {
+        let points = [
+            Point3::from((0.0, 0.0, 0.0)),
+            Point3::from((1.0, 0.0, 0.0)),
+            Point3::from((1.0, 1.0, 0.0)),
+            Point3::from((0.0, 1.0, 0.0)),
+        ];
+
+        let mut mesh = TMesh::new(points, 1.0);
+        mesh.try_add_absolute_point(Point3::from((0.2, 0.0, 0.0)), (0.2, 0.0))
+            .expect("Legal point insertion");
+
+        // Insert a point asymetrically into a mesh to test if knot interval calculations work
+        let knot_interval_check = mesh
+            .find(Point3::from((0.2, 0.0, 0.0)))
+            .expect("Control point previously inserted into mesh");
+
+        // Left connectioin should be connected to (0, 0, 0), with interval 0.2
+        assert_eq!(
+            knot_interval_check
+                .borrow()
+                .get_con_knot(TMeshDirection::LEFT)
+                .expect("Known existing connection"),
+            0.2,
+            "Knot inverval on LEFT does not match expectation"
+        );
+
+        // Right connectioin should be connected to (1, 0, 0), with interval 0.8
+        assert_eq!(
+            knot_interval_check
+                .borrow()
+                .get_con_knot(TMeshDirection::RIGHT)
+                .expect("Known existing connection"),
+            0.8,
+            "Knot inverval on RIGHT does not match expectation"
+        );
+    }
+
+    /// Constructs a T-mesh, testing that inserting a new control point using
+    /// `try_add_absolute_point` function produces errors when attempting to insert an unconnected point,
+    /// an existing point, and an out-of-bound point.
+    ///
+    /// ```            
+    ///             {+}
+    ///    |   |     
+    ///  --+---+--
+    ///    |[+]|
+    ///  -<+>--+--
+    ///    |   |
+    /// ```
+    /// <+> is the duplicate point
+    /// [+] is the unconnected pont
+    /// {+} is the out-of-bounds point
+    #[test]
+    fn test_t_mesh_try_add_absolute_point_invalid_insertion() {
+        let points = [
+            Point3::from((0.0, 0.0, 0.0)),
+            Point3::from((1.0, 0.0, 0.0)),
+            Point3::from((1.0, 1.0, 0.0)),
+            Point3::from((0.0, 1.0, 0.0)),
+        ];
+
+        let mut mesh = TMesh::new(points, 1.0);
+
+        // Test errors on inserting a point into the center of a face (unconnected point)
+        assert!(mesh
+            .try_add_absolute_point(Point3::from((0.5, 0.5, 0.0)), (0.5, 0.5))
+            .is_err_and(|e| { e == Error::TMeshConnectionNotFound }),
+            "Expected Error TMeshConnectionNotFound when attempting to insert a point in a location with no intersecting mesh edges.");
+
+        // Test errors on zero intervals (duplicate point)
+        assert!(mesh
+            .try_add_absolute_point(Point3::from((0.0, 0.0, 0.0)), (0.0, 0.0))
+            .is_err_and(|e| { e == Error::TMeshExistingControlPoint }),
+            "Expected Error TMeshExistingControlPoint when attempting to insert a point in a location where a control point already exists.");
+
+        // Test errrors on out-of-bounds insertions.
+        assert!(mesh
+            .try_add_absolute_point(Point3::from((2.0, 2.0, 0.0)), (2.0, 2.0))
+            .is_err_and(|e| { e == Error::TMeshConnectionInvalidKnotInterval }),
+            "Expected Error TMeshConnectionInvalidKnotInterval when attempting to insert a point outside the parametric domain of the mesh.");
+    }
+
+    /// Constructs the following T-mesh, testing that navigating from the origin to a connection in the
+    /// right direction functions as expected.
+    ///
+    /// ```
+    ///    |      |
+    ///  --+------+--
+    ///    |      |
+    ///  --+      |
+    ///    |      |
+    ///  --+------+--
+    ///    |      |
+    /// ```
+    /// <+> is the duplicate point
+    /// [+] is the unconnected pont
+    /// {+} is the out-of-bounds point
+    #[test]
+    fn test_t_mesh_navigate_until_con_existing_con() {
+        let points = [
+            Point3::from((0.0, 0.0, 0.0)),
+            Point3::from((1.0, 0.0, 0.0)),
+            Point3::from((1.0, 1.0, 0.0)),
+            Point3::from((0.0, 1.0, 0.0)),
+        ];
+
+        let mut mesh = TMesh::new(points, 1.0);
+        let origin = mesh
+            .find(Point3::from((0.0, 0.0, 0.0)))
+            .expect("Point exists in T-mesh");
+
+        // Add control point for navigation
+        mesh.add_control_point(
+            Point3::from((0.0, 0.5, 0.0)),
+            Rc::clone(&origin),
             TMeshDirection::UP,
-        );
+            0.5,
+        )
+        .expect("Valid addition of control point.");
+
+        // Navigates to the top left point
+        let navigation_result = origin
+            .borrow()
+            .navigate_until_con(TMeshDirection::UP, TMeshDirection::RIGHT);
+
         assert!(
-            left_mid_con.is_ok(),
-            "Middle is not correctly connected to UP"
+            navigation_result.is_ok(),
+            "Error navigating until existing connecton"
+        );
+        assert_eq!(
+            navigation_result.as_ref().unwrap().0.borrow().point,
+            Point3::from((0.0, 1.0, 0.0)),
+            "Navigation returned incorrect point"
+        );
+        assert_eq!(
+            navigation_result.as_ref().unwrap().1,
+            1.0,
+            "Navigation knot interval incorrect"
+        );
+    }
+
+    /// Constructs the following T-mesh, testing that navigating from the origin to a connection in the
+    /// left direction returns an error.
+    ///
+    /// ```
+    ///    |      |
+    ///  --+------+--
+    ///    |      |
+    ///  --+      |
+    ///    |      |
+    ///  --+------+--
+    ///    |      |
+    /// ```
+    /// <+> is the duplicate point
+    /// [+] is the unconnected pont
+    /// {+} is the out-of-bounds point
+    #[test]
+    fn test_t_mesh_navigate_until_con_no_existing_con() {
+        let points = [
+            Point3::from((0.0, 0.0, 0.0)),
+            Point3::from((1.0, 0.0, 0.0)),
+            Point3::from((1.0, 1.0, 0.0)),
+            Point3::from((0.0, 1.0, 0.0)),
+        ];
+
+        let mut mesh = TMesh::new(points, 1.0);
+        let origin = mesh
+            .find(Point3::from((0.0, 0.0, 0.0)))
+            .expect("Point exists in T-mesh");
+
+        // Add control point for navigation
+        mesh.add_control_point(
+            Point3::from((0.0, 0.5, 0.0)),
+            Rc::clone(&origin),
+            TMeshDirection::UP,
+            0.5,
+        )
+        .expect("Valid addition of control point.");
+
+        // Navigate until error
+        let navigation_result = origin
+            .borrow()
+            .navigate_until_con(TMeshDirection::UP, TMeshDirection::LEFT);
+
+        assert!(
+            navigation_result.is_err(),
+            "Navigation to non-existant connection succeeded (Should have failed)"
+        );
+        assert_eq!(
+            navigation_result.as_ref().err(),
+            Some(&Error::TMeshControlPointNotFound),
+            "Expected TMeshControlPointNotFound, got {:?}",
+            navigation_result.as_ref().err()
+        );
+    }
+
+    /// Constructs the following T-mesh, with the knot coordinates specified on the left and bottom
+    ///
+    /// ```
+    ///  1.0   +-----+-----------------------------------+
+    ///        |     |                                   |
+    ///  0.9   |     +-------+---+---+-----+---+-----+---+
+    ///        |     |       |   |   |     |   |     |   |
+    ///  0.8   |     |       |   |   |     +---+     |   |
+    ///        |     |       |   |   |     |   |     |   |
+    ///  0.7   |     |       +---+---+     |   +     |   |
+    ///  0.6   |     |       |       |     |   |     +---+
+    ///  0.5   |     |       |       +-----+   |     |   |
+    ///  0.4   +     |       +       |     |   |     |   +
+    ///  0.3   |     +-------+       |     |   |     |   |
+    ///  0.2   |     |       |       +-----+---+-----+---+
+    ///        |     |       |       |                   |
+    ///  0.0   +-----+-------+-------+-------------------+
+    ///       0.0   0.2     0.3 0.4 0.5  0.6  0.7   0.9 1.0
+    /// ```
+    fn construct_ray_casting_example_mesh() -> TMesh<Point3> {
+        let points = [
+            Point3::from((0.0, 0.0, 0.0)),
+            Point3::from((1.0, 0.0, 0.0)),
+            Point3::from((1.0, 1.0, 0.0)),
+            Point3::from((0.0, 1.0, 0.0)),
+        ];
+
+        let mut mesh = TMesh::new(points, 1.0);
+
+        // Absolute knot coordinatess of the points from the mesh above. They are ordered such that the 
+        // edges in the above image will be constructed without conflict, and so that points are only 
+        // inserted on existing edges.
+        let knot_pairs = Vec::from([
+            (0.0, 0.4),
+            (0.2, 1.0),
+            (1.0, 0.9),
+            (1.0, 0.6),
+            (1.0, 0.2),
+            (0.5, 0.0),
+            (0.3, 0.0),
+            (0.2, 0.0),
+            (0.2, 0.3),
+            (0.2, 0.9),
+            (0.3, 0.9),
+            (0.4, 0.9),
+            (0.5, 0.9),
+            (0.6, 0.9),
+            (0.7, 0.9),
+            (0.9, 0.9),
+            (0.3, 0.7),
+            (0.3, 0.4),
+            (0.3, 0.3),
+            (0.5, 0.7),
+            (0.5, 0.5),
+            (0.5, 0.2),
+            (0.4, 0.7),
+            (0.6, 0.2),
+            (0.7, 0.2),
+            (0.9, 0.2),
+            (0.6, 0.5),
+            (0.6, 0.8),
+            (0.7, 0.7),
+            (0.7, 0.8),
+            (0.9, 0.6),
+            (1.0, 0.4),
+        ]);
+
+        // Construct mesh
+        for knot_pair in knot_pairs {
+            mesh.try_add_absolute_point(Point3::from((knot_pair.0, knot_pair.1, 0.0)), knot_pair)
+                .expect(
+                    format!(
+                        "Valid addition of control point ({}, {}).",
+                        knot_pair.0, knot_pair.1
+                    )
+                    .as_str(),
+                );
+        }
+
+        mesh
+    }
+
+    /// Tests if the face intersection algorithm in cast_ray functions as expected. Does not test if the 
+    /// edge detection or connection traversal aspects of the algorithm function as expected. Uses the mesh
+    /// constructed by construct_ray_casting_example_mesh to test cast_ray, by casting a ray from the point 
+    /// located at (0.0, 0.4) in parametric space in the direction RIGHT.
+    #[test]
+    fn test_t_mesh_ray_casting_face_intersection() {
+        // Construct mesh
+        let mesh = construct_ray_casting_example_mesh();
+
+        // Select the initial point
+        let start = mesh
+            .find(Point3::from((0.0, 0.4, 0.0)))
+            .expect("Known existing point in mesh");
+
+        // Cast ray
+        let intersections = TMesh::cast_ray(Rc::clone(&start), TMeshDirection::RIGHT, 7);
+
+        assert!(
+            intersections.is_ok(),
+            "Ray casting produces unexpectd error"
+        );
+        let intersections = intersections.unwrap();
+
+        // Because 7 intersections are requested in the cast_ray function call, the returned vector must be of length 7
+        assert_eq!(
+            intersections.len(),
+            7,
+            "The incorrect number of intervals was returned"
         );
 
-        let left_mid_con = test_points_are_connected(
-            Rc::clone(&middle),
-            Rc::clone(&mesh.find(Point3::from((1.0, 0.5, 0.0))).unwrap()),
-            TMeshDirection::RIGHT,
-        );
+        // Check values in the returned vector.
         assert!(
-            left_mid_con.is_ok(),
-            "Middle is not correctly connected to RIGHT"
-        );
-
-        let left_mid_con = test_points_are_connected(
-            Rc::clone(&middle),
-            Rc::clone(&mesh.find(Point3::from((0.5, 0.0, 0.0))).unwrap()),
-            TMeshDirection::DOWN,
-        );
-        assert!(
-            left_mid_con.is_ok(),
-            "Middle is not correctly connected to DOWN"
-        );
-
-        let left_mid_con = test_points_are_connected(
-            Rc::clone(&middle),
-            Rc::clone(&mesh.find(Point3::from((0.0, 0.5, 0.0))).unwrap()),
-            TMeshDirection::LEFT,
-        );
-        assert!(
-            left_mid_con.is_ok(),
-            "Middle is not correctly connected to LEFT"
+            intersections
+                .iter()
+                .zip(Vec::from([0.2, 0.1, 0.2, 0.1, 0.1, 0.2, 0.1]))
+                .all(|p| (p.0 - p.1).so_small()),
+            "Recorded knot intervals differ form expectation"
         );
     }
 }

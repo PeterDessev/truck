@@ -193,10 +193,9 @@ the number of control points: {1}"
 
     #[error("A knot could not be inserted into the mesh at the desired location without violating Rule 3")]
     TMeshKnotVectorsNotEqual,
-    
-    // #[error("T-mesh knot intervals are not equal for opposing face edges.")]
-    // TMeshInvalidFaceKnots,
 
+    #[error("A control point with the same knot coordinates already exists, try inserting manually")]
+    TMeshExistingControlPoint,
 }
 
 #[test]
