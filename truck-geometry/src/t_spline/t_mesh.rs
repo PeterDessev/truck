@@ -59,6 +59,7 @@ impl<P> TMesh<P> {
         return TMesh {
             control_points,
             knot_vectors: None,
+            bezier_domains: None,
         };
     }
 
@@ -1053,7 +1054,511 @@ where
 
         Ok(())
     }
+
+    pub fn try_absolute_local_knot_insertion(&mut self, knot_coords: (f64, f64)) -> Result<()> {
+        // Make sure desred knot coordinates are within msh bounds
+        if knot_coords.0 < 0.0 || knot_coords.0 > 1.0 || knot_coords.1 < 0.0 || knot_coords.1 > 1.0
+        {
+            return Err(Error::TMeshConnectionInvalidKnotInterval);
+        }
+
+        // If a point already exists at the desired knot coordinates, return an error. Zero knot intervals can be put
+        // on any side of a point and still have the same knot coordinates, but the structure of the mesh will not be
+        // different. Thus, zero knot insertion must be done manually.
+        if self
+            .control_points
+            .iter()
+            .find(|c| {
+                let c_coords = c.borrow().get_knot_coordinates();
+                let comparison = (c_coords.0 - knot_coords.0, c_coords.1 - knot_coords.1);
+                comparison.0.so_small() && comparison.1.so_small()
+            })
+            .is_some()
+        {
+            return Err(Error::TMeshExistingControlPoint);
+        }
+
+        // The function checks for any T or S edges that intersect the point in paramtric space where the
+        // point is to be insertet, then computes the knot ratio needed such that the point is inserted
+        // at the correct place and inserts it using add_control_point.
+
+        // Check for any T edges which intersect the parametric location of the new point.
+        let mut point_t_coord = 0.0;
+        let mut con_knot = 0.0;
+        let s_axis_stradle_points = self
+            .control_points
+            .iter()
+            // Filter all points along the S axis of inserton
+            .filter(|point| (point.borrow().get_knot_coordinates().0 - knot_coords.0).so_small())
+            // Filter those points to only include the point that stradles the T axis of insertion
+            .filter(|point| {
+                if let Some(con) = point.borrow().get(TMeshDirection::UP) {
+                    let temp_t_coord = point.borrow().get_knot_coordinates().1;
+                    let temp_inter = con.1;
+
+                    // Knot of the new point is located on the connection being investigated?
+                    if temp_t_coord < knot_coords.1 && temp_t_coord + temp_inter > knot_coords.1 {
+                        point_t_coord = temp_t_coord; // T coordinate of the current point
+                        con_knot = temp_inter; // Edge knot interval
+
+                        return true;
+                    }
+                }
+                false
+            })
+            .map(|point| Rc::clone(point))
+            .collect::<Vec<Rc<RefCell<TMeshControlPoint<P>>>>>();
+
+        // Depending on the number of points whose connections intersect the location of the new point,
+        // different errors or actions are taken
+        match s_axis_stradle_points.len() {
+            // No T-edge instersects the point where the point needs to be inserted,
+            // try to find an S edge which intersects the location of the point
+            0 => {}
+            1 => {
+                // A T-edge is found where the point intersects
+                return self.try_local_knot_insertion(
+                    Rc::clone(&s_axis_stradle_points[0]),
+                    TMeshDirection::UP,
+                    (knot_coords.1 - point_t_coord) / con_knot,
+                );
+            }
+            _ => {
+                // Multiple T-edges are found where the point intersects (Should never happen)
+                return Err(Error::TMeshMalformedMesh);
+            }
+        };
+
+        let mut point_s_coord = 0.0;
+        let mut con_knot = 0.0;
+        let t_axis_stradle_points = self
+            .control_points
+            .iter()
+            // Filter all points along the T axis of inserton
+            .filter(|point| (point.borrow().get_knot_coordinates().1 - knot_coords.1).so_small())
+            // Filter those points to only include the point that stradles the S axis of insertion
+            .filter(|point| {
+                if let Some(con) = point.borrow().get(TMeshDirection::RIGHT) {
+                    let temp_s_coord = point.borrow().get_knot_coordinates().0;
+                    let temp_inter = con.1;
+
+                    // Knot of the new point is located on the connection being investigated?
+                    if temp_s_coord < knot_coords.0 && temp_s_coord + temp_inter > knot_coords.0 {
+                        point_s_coord = temp_s_coord; // S coordinate of the current point
+                        con_knot = temp_inter; // Edge knot interval
+
+                        return true;
+                    }
+                }
+                false
+            })
+            .map(|point| Rc::clone(point))
+            .collect::<Vec<Rc<RefCell<TMeshControlPoint<P>>>>>();
+
+        // Depending on the number of points whose connections intersect the location of the new point,
+        // different errors or actions are taken
+        match t_axis_stradle_points.len() {
+            0 => {
+                // No S-edge instersects the point where the point needs to be inserted, return an error
+                return Err(Error::TMeshConnectionNotFound);
+            }
+            1 => {
+                // An S-edge is found where the point intersects
+                return self.try_local_knot_insertion(
+                    Rc::clone(&t_axis_stradle_points[0]),
+                    TMeshDirection::RIGHT,
+                    (knot_coords.0 - point_s_coord) / con_knot,
+                );
+            }
+            _ => {
+                // Multiple S-edges are found where the point intersects (Should never happen)
+                return Err(Error::TMeshMalformedMesh);
+            }
+        };
+    }
+
+    fn try_bezier_domains(&self) -> Result<TMesh<P>> {
+        let mut mesh = self.clone();
+
+        // Bezier domains are constructed by direction, not by point. The alternative can lead to situations
+        // where local knot insertion fails not because of the geometry of the original mesh, but because
+        // the inserted bezier knots have resulted in a mesh which is "grid-locked", at which point local
+        // knot insertion fails at multiple positions.
+
+        for dir in [
+            TMeshDirection::UP,
+            TMeshDirection::DOWN,
+            TMeshDirection::RIGHT,
+            TMeshDirection::LEFT,
+        ] {
+            // New T-junctions are created when bezier domains are created, so use self's control points while modifying mesh's.
+            // Indecies stay the same, since new control points are pushed onto the cotnrol_points vector in mesh
+            for (index, original_mesh_cont_p) in self.control_points.iter().enumerate() {
+                if original_mesh_cont_p.borrow().con_type(dir) == TMeshConnectionType::Tjunction {
+                    let coresponding_point = Rc::clone(&mesh.control_points[index]);
+                    let mut knot_intervals =
+                        TMesh::cast_ray(Rc::clone(&coresponding_point), dir, 2)
+                            .map_err(|_| Error::TMeshMalformedMesh)?;
+
+                    // Convert relative deltas in knot_invervals into absolute deltas (point to point distances to absolute distances)
+                    knot_intervals[1] += knot_intervals[0];
+
+                    for interval in knot_intervals {
+                        let coords = dir.mutate_knot_coordinates(
+                            coresponding_point.borrow().get_knot_coordinates(),
+                            interval,
+                        );
+                        mesh.try_absolute_local_knot_insertion(coords)?;
+                    }
+                }
+            }
+        }
+
+        Ok(mesh)
+    }
+
+    /// Returns the cartesian point corresponding to the parametric coordinates for `self`. Usually the
+    /// parametric coordinates are constrained from 0 to 1 for both `s` and `t` as this is the domain of
+    /// the T-mesh in parametric space. However, parameters are not checked or forcefully constrained,
+    /// as there is a domain of continuity outside the usual parameter range. This domain, however, is not
+    /// guaranteed, and should be accessed at your own risk.
+    ///
+    /// # Returns
+    /// - `TMeshConnectionNotFound` if `self` contains a non-rectangular grid, in which case generating knot vectors will fail.
+    ///
+    /// - `TMeshControlPointNotFound` if `self` contains an edge condition inside of its mesh.
+    ///
+    /// - `Ok(P)` if the calculation succeeded. A `P` will be returned which is the T-mesh transformation
+    ///     of `(s, t)` into cartesian space.
+    ///
+    /// # Borrows
+    /// Immutably borrows every control point in `self`.
+    pub fn subs(&mut self, s: f64, t: f64) -> Result<P> {
+        // Generate bezier domains and knot vectors if stale
+        if self.bezier_domains.is_none() {
+            self.bezier_domains = Some(Box::new(self.try_bezier_domains()?));
+            self.bezier_domains
+                .as_mut()
+                .expect("Bezier domains should have succesfully generated or an error produced")
+                .generate_knot_vectors()?;
+        }
+
+        // S is horizontal
+        // T is virtical
+
+        // Currently the basis functions for each point are being generated every time `subs` is called
+        // TODO: Move basis functions out of `subs` into `self`
+        let mut basis_evaluations = Vec::new();
+        for (i, _) in self.control_points.iter().enumerate() {
+            // Though using the existing b-spline struct in TRUCK would be nice, unfourtunatly I haven't been able to get it to work, since it is not exactly a b-spline that is being calculated, but a specific b-spline basis function, which I haven't been able to extract from the b-spline struct. In order to produce the correct basis function, a significant ammount of brut force was used. First, the Cox-de Boor recursion formula from https://pages.mtu.edu/~shene/COURSES/cs3621/NOTES/spline/B-spline/bspline-basis.html was used with a little lua script to create a series of functions which could be plugged into desmos. Then, they were flattened into one function of considerable length. To see those functions, see https://www.desmos.com/calculator/on6vmapdcb. Then, the equation was simplified and split into four piecewise functions which corresponded to each of the four domains of the original function, where each function contributes one segment of the resulting basis function and does not overlap with any other function. To see those functions, see https://www.desmos.com/calculator/qikhwjjzxy. These final four piecewise functins are used to create the basis functions below.
+            let basis_function = |u: f64, a: Vec<f64>| -> f64 {
+                // If u is out of bounds, return 0.0 quickly before checking which range it falls into.
+                if u < a[0] || a[4] <= u {
+                    return 0.0;
+                }
+
+                if a[0] <= u && u < a[1] {
+                    let mut numerator = u - a[0];
+                    numerator *= numerator * numerator; // Cubed
+
+                    let mut denominator = a[3] - a[0];
+                    denominator *= a[2] - a[0];
+                    denominator *= a[1] - a[0];
+                    return numerator / denominator;
+                } else if a[1] <= u && u < a[2] {
+                    let scalar = 1.0 / (a[2] - a[1]);
+                    // Knot vector indices for each of the fractions in N_{2}(u) from the second desmos link.
+                    // Each tuple is a term containing a tuple of indices for the numerator and denominator respectively.
+                    let sum = Vec::from([
+                        ((0, 0, 2), (3, 0, 2, 0)),
+                        ((0, 1, 3), (3, 0, 3, 1)),
+                        ((1, 1, 4), (4, 1, 3, 1)),
+                    ])
+                    .iter()
+                    .fold(0.0, |sum, (num, den)| {
+                        sum + (((u - a[num.0]) * (u - a[num.1]) * (a[num.2] - u))
+                            / ((a[den.0] - a[den.1]) * (a[den.2] - a[den.3])))
+                    });
+
+                    return scalar * sum;
+                } else if a[2] <= u && u < a[3] {
+                    let scalar = 1.0 / (a[3] - a[2]);
+                    // Knot vector indices for each of the fractions in N_{2}(u) from the second desmos link.
+                    // Each tuple is a term containing a tuple of indices for the numerator and denominator respectively.
+                    let sum = Vec::from([
+                        ((0, 3, 3), (3, 0, 3, 1)),
+                        ((1, 4, 3), (4, 1, 3, 1)),
+                        ((2, 4, 4), (4, 1, 4, 2)),
+                    ])
+                    .iter()
+                    .fold(0.0, |sum, (num, den)| {
+                        sum + (((u - a[num.0]) * (a[num.1] - u) * (a[num.2] - u))
+                            / ((a[den.0] - a[den.1]) * (a[den.2] - a[den.3])))
+                    });
+
+                    return scalar * sum;
+                } else if a[3] <= u && u < a[4] {
+                    let mut numerator = a[4] - u;
+                    numerator *= numerator * numerator; // Cubed
+
+                    let mut denominator = a[4] - a[1];
+                    denominator *= a[4] - a[2];
+                    denominator *= a[4] - a[3];
+                    return numerator / denominator;
+                }
+                // Control flow will never reach here, however, rather than having an else statement at the bottom which
+                // is either the out-of-bounds case (most likely) or the final range (not explicit enough for my taste)
+                // I would rather just leave this here for you <3
+                0.0
+            };
+
+            basis_evaluations.push({
+                let knot_vectors = &self
+                    .bezier_domains
+                    .as_ref()
+                    .expect("Program should not reach basis evaluation if bezier generation failed")
+                    .knot_vectors
+                    .as_ref()
+                    .expect("Knot vectors should have successfully generated or an error returned")
+                    [i];
+
+                let s_eval = basis_function(s, knot_vectors.0.to_vec());
+                let t_eval = basis_function(t, knot_vectors.1.to_vec());
+                s_eval * t_eval
+            });
+            // basis_functions.push(move |s_param: f64, t_param: f64| -> P {
+            //     // Input point is located outside of influence domain of basis function.
+            //     if s_param < knots.0[0]
+            //         || s_param > knots.0[4]
+            //         || t_param < knots.1[0]
+            //         || t_param > knots.1[4]
+            //     {
+            //         return point * 0.0;
+            //     }
+            //     // Using De Boor's algorithm is faster than brute force, and we
+            //     // don't need the individual polynomial coefficients
+            //     // From: https://pages.mtu.edu/~shene/COURSES/cs3621/NOTES/spline/B-spline/de-Boor.html
+            //     const P: usize = 3;
+            //     //      u = s or t
+            //     //
+            //     // The contribution of the current point is a tensor product of the two B splines.
+            //     // Compute each individually and then multiply
+            //
+            //     // First B spline (horizontal)
+            //     for knot_v in [&knots.0, &knots.1] {
+            //         // k from the website
+            //         let floor_idx = knot_v
+            //             .floor(s_param)
+            //             .expect("Bounds were previously checked");
+            //         let h: usize;
+            //         // Mutliplicity is s on the website
+            //         let multiplicity: usize;
+            //
+            //         // "If u lies in (u_k, u_k+1), h = p"
+            //         if knot_v[floor_idx] != s_param {
+            //             multiplicity = 0;
+            //             h = P;
+            //
+            //         // "If u = u_k, h = p - s"
+            //         } else {
+            //             multiplicity = knot_v.multiplicity(floor_idx);
+            //             h = P - multiplicity;
+            //         }
+            //
+            //         for r in 1..=h {
+            //             for i in (floor_idx - P + r)..=(floor_idx - multiplicity) {}
+            //         }
+            //     }
+            //
+            //     point
+            // })
+        }
+
+        let numerator = basis_evaluations.iter().zip(self.bezier_domains
+                    .as_ref()
+                    .expect(
+                        "Control flow should not reach basis multiplication if bezier domain generation failed",
+                    )
+                    .control_points()[..self.control_points().len()]
+                    .iter()
+                    .map(|c| c.borrow().point().clone()),
+            )
+            .fold(P::origin(), |sum, (b, p)| sum + p.to_vec() * *b);
+
+        let denominator: f64 = basis_evaluations.iter().sum();
+        Ok(numerator / denominator)
+    }
 }
+
+impl<P> fmt::Display for TMesh<P> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // If only Hash Maps could use f64....
+        let mut s_levels: Vec<(f64, Vec<Rc<RefCell<TMeshControlPoint<P>>>>)> = Vec::new();
+        let mut t_levels: Vec<(f64, Vec<Rc<RefCell<TMeshControlPoint<P>>>>)> = Vec::new();
+
+        let sort_f64 = |a: &f64, b: &f64| -> std::cmp::Ordering {
+            if (a - b).so_small() {
+                return std::cmp::Ordering::Equal;
+            } else if a > b {
+                return std::cmp::Ordering::Greater;
+            }
+            return std::cmp::Ordering::Less;
+        };
+
+        for point in self.control_points.iter() {
+            let coords = point.borrow().get_knot_coordinates();
+
+            if let Some(s_level) = s_levels
+                .iter_mut()
+                .find(|c| sort_f64(&c.0, &coords.0) == std::cmp::Ordering::Equal)
+            {
+                let point_vec: &mut Vec<Rc<RefCell<TMeshControlPoint<P>>>> = s_level.1.as_mut();
+                point_vec.push(Rc::clone(point));
+            } else {
+                s_levels.push((coords.0, Vec::new()));
+                s_levels
+                    .last_mut()
+                    .expect("Pushed element on previous line.")
+                    .1
+                    .push(Rc::clone(point));
+            }
+
+            if let Some(t_level) = t_levels
+                .iter_mut()
+                .find(|c| sort_f64(&c.0, &coords.1) == std::cmp::Ordering::Equal)
+            {
+                let point_vec: &mut Vec<Rc<RefCell<TMeshControlPoint<P>>>> = t_level.1.as_mut();
+                point_vec.push(Rc::clone(point));
+            } else {
+                t_levels.push((coords.1, Vec::new()));
+                t_levels
+                    .last_mut()
+                    .expect("Pushed element on previous line.")
+                    .1
+                    .push(Rc::clone(point));
+            }
+        }
+
+        s_levels.sort_unstable_by(|a, b| sort_f64(&a.0, &b.0));
+        t_levels.sort_unstable_by(|a, b| sort_f64(&a.0, &b.0));
+
+        t_levels = t_levels.into_iter().rev().collect();
+
+        let mut virtical_cons: Vec<bool> = vec![false; s_levels.len()];
+        for (i, (s_level, _)) in s_levels.iter().enumerate() {
+            if let Some(point) = t_levels[0]
+                .1
+                .iter()
+                .find(|p| p.borrow().get_knot_coordinates().0 == *s_level)
+            {
+                virtical_cons[i] =
+                    point.borrow().con_type(TMeshDirection::UP) != TMeshConnectionType::Tjunction;
+            }
+        }
+        write!(f, "       ")?;
+        let mut line = String::new();
+        for con in virtical_cons.iter() {
+            if *con {
+                line.push_str("|   ");
+            } else {
+                line.push_str("    ");
+            }
+        }
+        write!(f, "{}\n", line)?;
+
+        // let line_len = 2 * s_levels.len();
+        for t_level in t_levels {
+            let mut line = String::new();
+            let mut has_left_edge = false;
+            let mut has_right_edge = false;
+
+            for (i, (s_level, _)) in s_levels.iter().enumerate() {
+                if let Some(point) = t_level
+                    .1
+                    .iter()
+                    .find(|p| p.borrow().get_knot_coordinates().0 == *s_level)
+                {
+                    if point.borrow().con_type(TMeshDirection::LEFT) == TMeshConnectionType::Edge {
+                        line.push_str("--");
+                        has_left_edge = true;
+                    }
+
+                    line.push('+');
+                    virtical_cons[i] = point.borrow().con_type(TMeshDirection::DOWN)
+                        != TMeshConnectionType::Tjunction;
+                    line.push_str(match point.borrow().con_type(TMeshDirection::RIGHT) {
+                        TMeshConnectionType::Edge => "--",
+                        TMeshConnectionType::Point => {
+                            has_right_edge = true;
+                            "---"
+                        }
+                        TMeshConnectionType::Tjunction => {
+                            has_right_edge = false;
+                            "   "
+                        }
+                    });
+                } else if virtical_cons[i] {
+                    line.push_str("|   ");
+                } else if has_right_edge {
+                    line.push_str("----");
+                } else {
+                    line.push_str("    ");
+                }
+            }
+
+            write!(f, "{:.2} ", t_level.0)?;
+            if !has_left_edge {
+                write!(f, "  ")?;
+            }
+            write!(f, "{}\n", line)?;
+
+            write!(f, "       ")?;
+            let mut line = String::new();
+            for con in virtical_cons.iter() {
+                if *con {
+                    line.push_str("|   ");
+                } else {
+                    line.push_str("    ");
+                }
+            }
+            write!(f, "{}\n", line)?;
+        }
+
+        let mut s_demarcations = (
+            format!("{:.2}", s_levels[0].0),
+            format!("{:.2}", s_levels[1].0),
+        );
+        for (i, s_level) in s_levels[2..].iter().enumerate() {
+            if i % 2 == 0 {
+                s_demarcations
+                    .0
+                    .push(if virtical_cons[i + 1] { '|' } else { ' ' });
+                s_demarcations
+                    .0
+                    .push_str(format!("   {:.2}", s_level.0).as_str());
+            } else {
+                s_demarcations
+                    .1
+                    .push_str(format!("    {:.2}", s_level.0).as_str());
+            }
+        }
+
+        if *virtical_cons
+            .last()
+            .expect("All T-meshes have at least 2 S-levels")
+            && s_levels.len() % 2 == 0
+        {
+            s_demarcations.0.push('|');
+        }
+
+        write!(f, "       ")?;
+        write!(f, "{}\n", s_demarcations.0)?;
+        write!(f, "           ")?;
+        write!(f, "{}\n", s_demarcations.1)?;
+        Ok(())
+    }
+}
+
 impl<P> Clone for TMesh<P>
 where
     P: Clone,
@@ -1944,5 +2449,134 @@ mod tests {
                 .all(|p| (p.0 - p.1).so_small()),
             "Recorded knot intervals differ form expectation"
         );
+    }
+
+    /// Clones the mesh produced by `construct_ray_casting_example_mesh` and then compares it to a second,
+    /// uncloned mesh from `construct_ray_casting_example_mesh`.
+    #[test]
+    fn test_t_mesh_clone() {
+        let tmesh_test = construct_ray_casting_example_mesh().clone();
+        let tmesh_comp = construct_ray_casting_example_mesh();
+
+        // Test number of control points
+        assert!(
+            tmesh_test.control_points().len() == tmesh_comp.control_points().len(),
+            "Number of control points in mesh is not the same as original mesh"
+        );
+
+        // Test cartesian points
+        assert!(
+            tmesh_test
+                .control_points()
+                .iter()
+                .zip(tmesh_comp.control_points().iter())
+                .all(|p| { p.0.borrow().point() == p.1.borrow().point() }),
+            "Control points of cloned mesh are not the same as original mesh"
+        );
+
+        // Test parametric points
+        assert!(
+            tmesh_test
+                .control_points()
+                .iter()
+                .zip(tmesh_comp.control_points().iter())
+                .all(|p| {
+                    p.0.borrow().get_knot_coordinates() == p.1.borrow().get_knot_coordinates()
+                }),
+            "Parametric coordinates of cloned mesh are not the same as original mesh"
+        );
+
+        // Test connections
+        assert!(tmesh_test
+            .control_points()
+            .iter()
+            .zip(tmesh_comp.control_points().iter())
+            .all(|p| {
+                // Test all directions of every point in the meshes
+                for dir in TMeshDirection::iter() {
+                    // Compare connection types
+                    if p.0.borrow().con_type(dir) != p.1.borrow().con_type(dir) {
+                        return false;
+                    }
+
+                    // Based on the conenction type, compare connected objects
+                    match p.0.borrow().con_type(dir) {
+                        TMeshConnectionType::Edge => {
+                            // Compare knot intervals
+                            if p.0.borrow().get_con_knot(dir) != p.1.borrow().get_con_knot(dir) {
+                                return false;
+                            }
+                        }
+                        TMeshConnectionType::Point => {
+                            // Compare knot intervals
+                            if p.0.borrow().get_con_knot(dir) != p.1.borrow().get_con_knot(dir) {
+                                return false;
+                            }
+
+                            // Get connection object from both meshes
+                            let test_borrow = p.0.borrow();
+                            let test_con = test_borrow
+                                .get(dir)
+                                .as_ref()
+                                .expect("Point con type must have a connection");
+                            let comp_borrow = p.1.borrow();
+                            let comp_con = comp_borrow
+                                .get(dir)
+                                .as_ref()
+                                .expect("Point con type must have a connection");
+
+                            // Compare connected points
+                            if test_con
+                                .0
+                                .as_ref()
+                                .expect("Point con type must have a point connected")
+                                .borrow()
+                                .point()
+                                != comp_con
+                                    .0
+                                    .as_ref()
+                                    .expect("Point con type must have a point connected")
+                                    .borrow()
+                                    .point()
+                            {
+                                return false;
+                            }
+                        }
+                        TMeshConnectionType::Tjunction => {}
+                    }
+                }
+
+                true
+            }))
+    }
+
+    #[test]
+    fn test_t_mesh_subs() {
+        const C: usize = 100;
+        let points = [
+            Point3::from((0.0, 0.0, 0.0)),
+            Point3::from((1.0, 0.0, 1.0)),
+            Point3::from((1.0, 1.0, 2.0)),
+            Point3::from((0.0, 1.0, 1.0)),
+        ];
+
+        // Tmesh is now a surface where all point on the surface are of the form (f(x), g(y), f(x) + g(y)) 
+        // approximates x + y = z with medial x and y values
+        let mut mesh = TMesh::new(points, 1.0);
+
+        for s in 0..C {
+            let s = s as f64 / C as f64;
+            for t in 0..C {
+                let t = t as f64 / C as f64;
+                let p = mesh
+                    .subs(s, t)
+                    .expect("Solvable T-mesh with s and t within bounds");
+
+                assert!(
+                    ((p.x + p.y) - p.z).so_small(),
+                    "Returned subs value does not match expectation."
+                );
+            }
+        }
     }
 }
