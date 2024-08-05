@@ -171,6 +171,10 @@ impl<P> TMeshControlPoint<P> {
         dir: TMeshDirection,
         ki: f64,
     ) -> Result<()> {
+        if std::ptr::eq(point.as_ref(), other.as_ref()) {
+            return Err(Error::TMeshExistingControlPoint);
+        }
+
         // is connection dir for point none?
         let con = {
             let borrow = point

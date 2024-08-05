@@ -453,8 +453,8 @@ impl<P> TMesh<P> {
         let mut t_vec: Vec<f64> = vec![0.0; 5];
 
         // Center of the knot vec is the knot coordinate of the current point
-        s_vec[3] = p.borrow().get_knot_coordinates().0;
-        t_vec[3] = p.borrow().get_knot_coordinates().1;
+        s_vec[2] = p.borrow().get_knot_coordinates().0;
+        t_vec[2] = p.borrow().get_knot_coordinates().1;
 
         // Cast rays in all directions
         for dir in TMeshDirection::iter() {
@@ -489,7 +489,7 @@ impl<P> TMesh<P> {
                         t_vec[1 - i] = t_vec[2 - i] - inter;
                     }
                     TMeshDirection::LEFT => {
-                        s_vec[1 - i] = t_vec[2 - i] - inter;
+                        s_vec[1 - i] = s_vec[2 - i] - inter;
                     }
                 }
             }
@@ -1038,13 +1038,14 @@ where
             + (center_points[3].borrow().point().clone().to_vec() * (d[3] + d[4] + d[5])))
             / (d[2] + d[3] + d[4] + d[5]);
 
+        center_points[1].borrow_mut().set_point(p2_prime);
+        center_points[2].borrow_mut().set_point(p4_prime);
+
         let p3_prime = ((center_points[1].borrow().point().clone() * (d[3] + d[4]))
             + (center_points[3].borrow().point().clone().to_vec() * (d[1] + d[2])))
             / (d[1] + d[2] + d[3] + d[4]);
 
-        center_points[1].borrow_mut().set_point(p2_prime);
-        center_points[2].borrow_mut().set_point(p3_prime);
-        center_points[3].borrow_mut().set_point(p4_prime);
+        self.add_control_point(p3_prime, Rc::clone(&p), dir, knot_ratio)?;
 
         Ok(())
     }
