@@ -146,30 +146,18 @@ impl<P> TMesh<P> {
         // Get the point currently connected to the connection point
         let other_point = {
             let borrow = con.borrow();
-            let other_point = borrow
-                .get(connection_side)
-                .as_ref()
-                .ok_or(Error::TMeshConnectionNotFound)?
-                .0
-                .as_ref()
-                .ok_or(Error::TMeshControlPointNotFound)?;
-
-            Rc::clone(other_point)
+            Rc::clone(&borrow.get_conected_point(connection_side)?)
         };
 
         let knot_interval = con_point
             .borrow()
-            .get(connection_side)
-            .as_ref()
-            .ok_or(Error::TMeshConnectionNotFound)?
-            .1;
+            .get_con_knot(connection_side)
+            .ok_or(Error::TMeshConnectionNotFound)?;
 
         let other_knot_interval = other_point
             .borrow()
-            .get(connection_side.flip())
-            .as_ref()
-            .ok_or(Error::TMeshConnectionNotFound)?
-            .1;
+            .get_con_knot(connection_side.flip())
+            .ok_or(Error::TMeshConnectionNotFound)?;
 
         // Confirm that the knot intervals are the same in both directions.
         if !(knot_interval - other_knot_interval).so_small() {
@@ -596,11 +584,7 @@ impl<P> TMesh<P> {
         let mut ic_knot_interval = 0.0; // The interval of the ic
 
         // Check that p is not a corner
-        if p.borrow()
-            .get(face_dir)
-            .as_ref()
-            .is_some_and(|c| c.0.is_some())
-        {
+        if p.borrow().con_type(face_dir) == TMeshConnectionType::Point {
             return Err(Error::TMeshExistingConnection);
         }
 
@@ -613,34 +597,18 @@ impl<P> TMesh<P> {
                 // Accumulate knot intervals on the side of a face
                 accumulation += cur_point
                     .borrow()
-                    .get(cur_dir)
-                    .as_ref()
-                    .ok_or(Error::TMeshConnectionNotFound)?
-                    .1;
+                    .get_con_knot(cur_dir)
+                    .ok_or(Error::TMeshConnectionNotFound)?;
 
                 // Traverse to the next control point
                 cur_point = {
                     let borrow = cur_point.borrow();
-
-                    let point = borrow
-                        .get(cur_dir)
-                        .as_ref()
-                        .ok_or(Error::TMeshConnectionNotFound)?
-                        .0
-                        .as_ref()
-                        .ok_or(Error::TMeshControlPointNotFound)?;
-
-                    Rc::clone(&point)
+                    borrow.get_conected_point(cur_dir)?
                 };
 
-                // Face corner detection. Break if a corner is detected. The and in
-                // is_some_and is a formality which shouldn't be nessessary.
-                // (needs testing)
-                if cur_point
-                    .borrow()
-                    .get(cur_dir.anti_clockwise())
-                    .as_ref()
-                    .is_some_and(|c| c.0.is_some())
+                // Face corner detection. Break if a corner is detected.
+                if cur_point.borrow().con_type(cur_dir.anti_clockwise())
+                    == TMeshConnectionType::Point
                 {
                     cur_dir = cur_dir.anti_clockwise();
                     break 'traverse;
@@ -665,23 +633,12 @@ impl<P> TMesh<P> {
         loop {
             ic_knot_accumulation += cur_point
                 .borrow()
-                .get(cur_dir)
-                .as_ref()
-                .ok_or(Error::TMeshConnectionNotFound)?
-                .1;
+                .get_con_knot(cur_dir)
+                .ok_or(Error::TMeshConnectionNotFound)?;
 
             cur_point = {
                 let borrow = cur_point.borrow();
-
-                let point = borrow
-                    .get(cur_dir)
-                    .as_ref()
-                    .ok_or(Error::TMeshConnectionNotFound)?
-                    .0
-                    .as_ref()
-                    .ok_or(Error::TMeshControlPointNotFound)?;
-
-                Rc::clone(&point)
+                Rc::clone(&borrow.get_conected_point(cur_dir)?)
             };
 
             // Ic found
@@ -709,7 +666,8 @@ impl<P> TMesh<P> {
 
     /// Casts a ray from `p` in the direction `dir` for `num` intersections, returning a vector containing the knot
     /// intervals of each intersection. When an edge condition is encountered before `num` intersections have been
-    /// crossed, the returned vector is padded with `0.0`. All vectors returned from this function will have a length `num`.
+    /// crossed, the returned vector contains the edge knot interval once, after which it is padded with `0.0`.
+    /// All vectors returned from this function will have a length `num`.
     ///
     /// # Returns
     /// - `TMeshConnectionNotFound` if a T-mesh is found on the edge of a face, making it non-rectangular (malformed mesh).
@@ -880,15 +838,11 @@ impl<P> TMesh<P> {
                     // Traverse to the next point
                     cur_point = {
                         let borrow = cur_point.borrow();
-                        let point = borrow
-                            .get(dir)
-                            .as_ref()
-                            .expect("Point connection must have Some(connection)")
-                            .0
-                            .as_ref()
-                            .expect("Point connection must have a point reference to connect to");
-
-                        Rc::clone(point)
+                        Rc::clone(
+                            &borrow
+                                .get_conected_point(dir)
+                                .expect("Point connections must have connected points"),
+                        )
                     };
                 }
 
@@ -984,12 +938,8 @@ where
             // Checked in the begining of the function with match
             Rc::clone(
                 &borrow
-                    .get(dir)
-                    .as_ref()
-                    .expect("Point connection type must have a connection")
-                    .0
-                    .as_ref()
-                    .expect("Point connection type must connect to a point"),
+                    .get_conected_point(dir)
+                    .expect("Point connections must have connected points"),
             )
         });
         center_points.push({
@@ -1123,13 +1073,7 @@ mod tests {
     ) -> std::result::Result<(), (i32, Error)> {
         // Check that point is connected to other
         let point_borrow = point.borrow();
-        let point_con = point_borrow
-            .get(dir)
-            .as_ref()
-            .ok_or((0, Error::TMeshConnectionNotFound))?
-            .0
-            .as_ref()
-            .ok_or((0, Error::TMeshControlPointNotFound))?;
+        let point_con = &point_borrow.get_conected_point(dir).map_err(|e| (0, e))?;
         let point_equal = Rc::ptr_eq(point_con, &other);
         point_equal
             .then(|| 0)
@@ -1137,13 +1081,9 @@ mod tests {
 
         // Check that other is connected to point
         let other_borrow = other.borrow();
-        let other_con = other_borrow
-            .get(dir.flip())
-            .as_ref()
-            .ok_or((1, Error::TMeshConnectionNotFound))?
-            .0
-            .as_ref()
-            .ok_or((1, Error::TMeshControlPointNotFound))?;
+        let other_con = &other_borrow
+            .get_conected_point(dir.flip())
+            .map_err(|e| (1, e))?;
         let other_equal = Rc::ptr_eq(other_con, &point);
         other_equal
             .then(|| 0)
@@ -1359,10 +1299,8 @@ mod tests {
             let borrow = top_mid.borrow();
 
             (borrow
-                .get(TMeshDirection::DOWN)
-                .as_ref()
+                .get_con_knot(TMeshDirection::DOWN)
                 .expect("Connection should exist")
-                .1
                 - 1.0)
                 .so_small()
         };
@@ -1739,7 +1677,8 @@ mod tests {
         );
     }
 
-    /// Constructs the following T-mesh, with the knot coordinates specified on the left and bottom
+    /// Constructs the following T-mesh, with the knot coordinates specified on the left and bottom. All edge condition
+    ///  intervals have a knot interval of 2.5.
     ///
     /// ```
     ///  1.0   +-----+-----------------------------------+
@@ -1766,10 +1705,10 @@ mod tests {
             Point3::from((0.0, 1.0, 0.0)),
         ];
 
-        let mut mesh = TMesh::new(points, 1.0);
+        let mut mesh = TMesh::new(points, 2.5);
 
-        // Absolute knot coordinatess of the points from the mesh above. They are ordered such that the 
-        // edges in the above image will be constructed without conflict, and so that points are only 
+        // Absolute knot coordinatess of the points from the mesh above. They are ordered such that the
+        // edges in the above image will be constructed without conflict, and so that points are only
         // inserted on existing edges.
         let knot_pairs = Vec::from([
             (0.0, 0.4),
@@ -1821,9 +1760,9 @@ mod tests {
         mesh
     }
 
-    /// Tests if the face intersection algorithm in cast_ray functions as expected. Does not test if the 
+    /// Tests if the face intersection algorithm in cast_ray functions as expected. Does not test if the
     /// edge detection or connection traversal aspects of the algorithm function as expected. Uses the mesh
-    /// constructed by construct_ray_casting_example_mesh to test cast_ray, by casting a ray from the point 
+    /// constructed by construct_ray_casting_example_mesh to test cast_ray, by casting a ray from the point
     /// located at (0.0, 0.4) in parametric space in the direction RIGHT.
     #[test]
     fn test_t_mesh_ray_casting_face_intersection() {
@@ -1836,7 +1775,7 @@ mod tests {
             .expect("Known existing point in mesh");
 
         // Cast ray
-        let intersections = TMesh::cast_ray(Rc::clone(&start), TMeshDirection::RIGHT, 7);
+        let intersections = TMesh::cast_ray(Rc::clone(&start), TMeshDirection::RIGHT, 9);
 
         assert!(
             intersections.is_ok(),
@@ -1844,10 +1783,10 @@ mod tests {
         );
         let intersections = intersections.unwrap();
 
-        // Because 7 intersections are requested in the cast_ray function call, the returned vector must be of length 7
+        // Because 9 intersections are requested in the cast_ray function call, the returned vector must be of length 9
         assert_eq!(
             intersections.len(),
-            7,
+            9,
             "The incorrect number of intervals was returned"
         );
 
@@ -1855,7 +1794,7 @@ mod tests {
         assert!(
             intersections
                 .iter()
-                .zip(Vec::from([0.2, 0.1, 0.2, 0.1, 0.1, 0.2, 0.1]))
+                .zip(Vec::from([0.2, 0.1, 0.2, 0.1, 0.1, 0.2, 0.1, 2.5, 0.0]))
                 .all(|p| (p.0 - p.1).so_small()),
             "Recorded knot intervals differ form expectation"
         );

@@ -83,6 +83,18 @@ impl TMeshDirection {
             TMeshDirection::RIGHT => false,
         }
     }
+
+    /// Adds `delta` to an existing set of knot `coords`, taking into account the direction `self` 
+    /// such that `delta` is correctly added or subtracted from one of `coords`'s members in order
+    /// to move `coords` in the direction `self` by a distance `delta`.
+    pub fn mutate_knot_coordinates(self, coords: (f64, f64), delta: f64) -> (f64, f64) {
+        match self {
+            TMeshDirection::UP => (coords.0, coords.1 + delta),
+            TMeshDirection::DOWN => (coords.0, coords.1 - delta),
+            TMeshDirection::LEFT => (coords.0 - delta, coords.1),
+            TMeshDirection::RIGHT => (coords.0 + delta, coords.1),
+        }
+    }
 }
 
 impl fmt::Display for TMeshDirection {

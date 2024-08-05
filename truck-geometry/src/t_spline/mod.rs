@@ -20,7 +20,7 @@ use truck_base::cgmath64::control_point::ControlPoint;
 
 pub type TMeshConnection<P> = (Option<Rc<RefCell<TMeshControlPoint<P>>>>, f64);
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum TMeshConnectionType {
     Point,
     Edge,
@@ -29,7 +29,7 @@ pub enum TMeshConnectionType {
 /// # T-mesh control point
 ///
 /// Described in \[Sederberg et al. 2003\].
-#[derive(Clone, PartialEq, Debug)]
+#[derive(PartialEq, Debug)]
 pub struct TMeshControlPoint<P> {
     point: P, // The control point location in Cartesian space
 
@@ -51,7 +51,7 @@ pub struct TMeshControlPoint<P> {
 /// A T-mesh is the structure behind a T-spline. Each point may have up to four
 /// possible connections with other adjacent points in the mesh. Each connection has
 /// a knot interval, which may be any number greater than or equal to 0.
-#[derive(Clone, PartialEq, Debug)]
+#[derive(PartialEq, Debug)]
 pub struct TMesh<P> {
     control_points: Vec<Rc<RefCell<TMeshControlPoint<P>>>>,
 
