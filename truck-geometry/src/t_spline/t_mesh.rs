@@ -1054,6 +1054,147 @@ where
         Ok(())
     }
 }
+impl<P> Clone for TMesh<P>
+where
+    P: Clone,
+{
+    fn clone(&self) -> TMesh<P> {
+        // Vector containing new point objects which have the same positions as the points in the original mesh
+        let mut points_copy = Vec::new();
+        // Vector containing the connections for each point with the corresponding index in points_copy.
+        // Each sub-vector will be 4 elements long, and each element of the sub-vector will be None if the
+        // connection is a T-junction, Some((None, f64)) for an Edge condition, and Some((Some(index), f64))
+        // for a Point connection, where index is the index of the connected point in self.control_points,
+        // and thus points_copy by extension.
+        let mut point_connections: Vec<Vec<Option<(Option<usize>, f64)>>> = Vec::new();
+
+        // Copy all the points into points_copy and all connections into point_connections
+        for point in self.control_points.iter() {
+            // Clone the cartesian point
+            let cart_point = {
+                let borrow = point.borrow();
+                borrow.point().clone()
+            };
+            // Push a new control point corresponding to the control point in self.control_points to points_copy
+            // The edge interval is 1.0, however, this can be any value, since establishing connections will
+            // overwrite this with the correct value.
+            points_copy.push(Rc::new(RefCell::new(TMeshControlPoint::new(
+                cart_point, 1.0,
+            ))));
+
+            // Push a new set of connections
+            point_connections.push(Vec::new());
+            // Retrieve the previously pushed set of connections for ease of use.
+            let last = point_connections
+                .last_mut()
+                .expect("Previously pushed item");
+
+            // TMeshDirection::iter() produces the same order of directions every time, so all connection
+            // sub-vectors in point_connections will be ordered in the same way, and will be read the same
+            // way during connection establishment.
+            for dir in TMeshDirection::iter() {
+                match point.borrow().con_type(dir) {
+                    // Some((None, f64))
+                    TMeshConnectionType::Edge => last.push(Some((
+                        None,
+                        point
+                            .borrow()
+                            .get_con_knot(dir)
+                            .expect("Edge connection types must have a knot interval."),
+                    ))),
+                    // Some((Some(Index), f64))
+                    TMeshConnectionType::Point => {
+                        let connected_point = point
+                            .borrow()
+                            .get_conected_point(dir)
+                            .expect("Point connection types must have a connected point");
+
+                        last.push(Some(
+                        (Some(
+                            self.control_points
+                                .iter()
+                                .position(|p| std::ptr::eq(p.as_ref(), connected_point.as_ref())).expect("All connected points must be stored in tmesh control_points vector"),
+                        ), point.borrow().get_con_knot(dir).expect("Point connection types must have a knot interval.")),
+                    ))
+                    }
+                    // None
+                    TMeshConnectionType::Tjunction => {
+                        last.push(None);
+                    }
+                };
+            }
+        }
+
+        // Establish connections
+        'points_loop: for (point_index, connections) in point_connections.iter().enumerate() {
+            // Zip direction with corresponding connections to index the direction for modification
+            'connections_loop: for (connection, dir) in
+                connections.iter().zip(TMeshDirection::iter())
+            {
+                if let Some(con) = connection {
+                    // Point connection
+                    if let Some(con_index) = con.0 {
+                        // Connections has already been established. Connect will also add the connection to points_copy[con_index],
+                        // so when points_copy[con_index] is reached by 'points_loop, the connection will already exist, so we skip it.
+                        if points_copy[point_index].borrow().con_type(dir)
+                            == TMeshConnectionType::Point
+                        {
+                            continue 'connections_loop;
+                        }
+
+                        // Remove existing edge conditions from both points to be connected.
+                        {
+                            points_copy[point_index]
+                                .borrow_mut()
+                                .remove_connection(dir)
+                                .expect("Connections are only modified once.");
+                            points_copy[con_index]
+                                .borrow_mut()
+                                .remove_connection(dir.flip())
+                                .expect("Connections are only modified once.");
+                        }
+
+                        // Connect points to each other
+                        TMeshControlPoint::connect(
+                            Rc::clone(&points_copy[point_index]),
+                            Rc::clone(&points_copy[con_index]),
+                            dir,
+                            con.1,
+                        )
+                        .expect("Control points have no connections between each other.")
+                    // Edge condition
+                    } else {
+                        points_copy[point_index]
+                            .borrow_mut()
+                            .set_edge_con_weight(dir, con.1)
+                            .expect(
+                                "Unmodified control points have edge conditions in all directions.",
+                            );
+                    }
+                // T-junction
+                } else {
+                    points_copy[point_index]
+                        .borrow_mut()
+                        .remove_connection(dir)
+                        .expect(
+                            "Unmodified control points have edge conditions in all directions.",
+                        );
+                }
+            }
+        }
+
+        // Set absolute knot coordinates
+        for (i, p) in self.control_points().iter().enumerate() {
+            points_copy[i].borrow_mut().knot_coordinates = p.borrow().get_knot_coordinates();
+        }
+
+        TMesh {
+            control_points: points_copy,
+            knot_vectors: None,
+            bezier_domains: None,
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
