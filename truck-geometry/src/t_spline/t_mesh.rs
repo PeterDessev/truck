@@ -902,7 +902,8 @@ where
         }
 
         // Rule 3 of T-splines, [Sederberg et al. 2003], states that all (The paper does not specify existing or otherwise,
-        // I am assuming that they all must exist) perpandicular and in-line knot vectors of length 5 centered on the axis
+        // I am assuming that they may or may not exist, however, the connection from the inner two points must not be
+        // a T-junction) perpandicular and in-line knot vectors of length 5 centered on the axis
         // of insertion and a distance of at most two knots from the point to be inserted must be equal. See Figure 10 in
         // [Sederberg et al. 2003] for details.
         let mut center_points: Vec<Rc<RefCell<TMeshControlPoint<P>>>> = Vec::with_capacity(4);
@@ -922,8 +923,7 @@ where
                 if let Some(point) = con.0.as_ref() {
                     Rc::clone(point)
                 } else {
-                    // Edge condition, return an error
-                    return Err(Error::TMeshControlPointNotFound);
+                    Rc::clone(&p)
                 }
             // T junction means that a knot can not be inserted, since the knot vector for this "column's" center
             // point is going to be different, see rule 2 for T-meshes in [Sederberg et al. 2003].
@@ -952,7 +952,7 @@ where
                 if let Some(point) = con.0.as_ref() {
                     Rc::clone(point)
                 } else {
-                    return Err(Error::TMeshControlPointNotFound);
+                    Rc::clone(&center_points[2])
                 }
             } else {
                 // T junction
@@ -961,9 +961,17 @@ where
         });
 
         // Store the first knot vector to compare it to the rest. If any do not match, return an error
-        let mut knot_vec_compare: Option<KnotVec> = None;
+        let knot_vec_compare: KnotVec = {
+            let point_knots = TMesh::get_point_knot_vectors(Rc::clone(&center_points[0]))?;
+
+            // Depending on the direction of insertion, the S or T knot vectors are needed.
+            match dir {
+                TMeshDirection::LEFT | TMeshDirection::RIGHT => point_knots.1,
+                TMeshDirection::DOWN | TMeshDirection::UP => point_knots.0,
+            }
+        };
         // Generate knot vector for each point and compare
-        for point in center_points.iter() {
+        for point in center_points[1..].iter() {
             // Get knot vectors in both directions for the point
             let point_knots = TMesh::get_point_knot_vectors(Rc::clone(point))?;
 
@@ -973,12 +981,8 @@ where
                 TMeshDirection::DOWN | TMeshDirection::UP => point_knots.0,
             };
 
-            if let Some(other_kv) = knot_vec_compare.as_ref() {
-                if cur_kv != *other_kv {
-                    return Err(Error::TMeshKnotVectorsNotEqual);
-                }
-            } else {
-                knot_vec_compare = Some(cur_kv);
+            if cur_kv != knot_vec_compare {
+                return Err(Error::TMeshKnotVectorsNotEqual);
             }
         }
 
