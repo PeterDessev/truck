@@ -56,7 +56,7 @@ pub struct TMesh<P> {
     control_points: Vec<Rc<RefCell<TMeshControlPoint<P>>>>,
 
     knot_vectors: Option<Vec<(KnotVec, KnotVec)>>,
-    bezier_domains: Option<Box<TMesh<P>>>,
+    bezier_domains: RefCell<Option<Box<TMesh<P>>>>,
 }
 
 /// # TMeshDirrection

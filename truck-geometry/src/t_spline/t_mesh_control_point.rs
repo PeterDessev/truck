@@ -94,9 +94,6 @@ impl<P> TMeshControlPoint<P> {
     /// `dir` can be either a point connection or an edge condition. Modifies the connected point to also
     /// remove the connection, if it exists. In the case of an error, nothing is modified.
     ///
-    /// # Borrows
-    /// The function must be able to mutably borrow the point self is connected to.
-    ///
     /// # Returns
     /// - `TMeshConnectionNotFound` if the connection does not exist.
     ///
@@ -105,6 +102,9 @@ impl<P> TMeshControlPoint<P> {
     ///     that is, if the point does not exist.)
     ///
     /// - `Ok` if the connection was successfully removed.
+    /// 
+    /// # Borrows
+    /// The function must be able to mutably borrow the point self is connected to.
     pub fn remove_connection(&mut self, dir: TMeshDirection) -> Result<()> {
         if let Some(connection) = &mut self.connections[dir as usize] {
             // If the connection is not an edge condition, modify the connected point
@@ -153,9 +153,6 @@ impl<P> TMeshControlPoint<P> {
     /// by taking the knot coordinates of `point` and applying the delta `ki` to the relevant coordinate.
     /// Only `other`'s knot coordinates will change
     ///
-    /// # Borrows
-    /// `connect` borrows both `point` and `other` mutably.
-    ///
     /// # Returns
     /// - `TMeshControlPointNotFound` if either `point` or `other` could not be borrowed mutably.
     ///
@@ -165,6 +162,9 @@ impl<P> TMeshControlPoint<P> {
     /// - `TMeshExistingControlPoint` if `point` and `other` are the same control point.
     ///
     /// - `Ok` if the connection was successfully created between the two points.
+    /// 
+    /// # Borrows
+    /// `connect` borrows both `point` and `other` mutably.
     pub fn connect(
         point: Rc<RefCell<TMeshControlPoint<P>>>,
         other: Rc<RefCell<TMeshControlPoint<P>>>,
@@ -351,7 +351,7 @@ impl<P> TMeshControlPoint<P> {
     /// - `TMeshControlPointNotFound` if the connection in direction `dir` is an edge condition.
     ///
     /// - `Ok(point)` if the connection in direction `dir` is a point, where `point` is the corresponding control point.
-    pub fn get_conected_point(
+    pub fn try_get_conected_point(
         &self,
         dir: TMeshDirection,
     ) -> Result<Rc<RefCell<TMeshControlPoint<P>>>> {
@@ -364,6 +364,30 @@ impl<P> TMeshControlPoint<P> {
             .ok_or(Error::TMeshControlPointNotFound)?;
 
         Ok(Rc::clone(connected_point))
+    }
+
+    /// Returns the connected control point in the direction `dir`, panicking if it does not exist.
+    ///
+    /// # Returns
+    /// The point connected to `self`
+    /// 
+    /// # Panics
+    /// If there is no point connected to self in direction `dir`.
+    pub fn get_conected_point(
+        &self,
+        dir: TMeshDirection,
+    ) -> Rc<RefCell<TMeshControlPoint<P>>> {
+        let connected_point = &self
+            .get(dir)
+            .as_ref()
+            .ok_or(Error::TMeshConnectionNotFound)
+            .expect("Point connections require a connection")
+            .0
+            .as_ref()
+            .ok_or(Error::TMeshControlPointNotFound)
+            .expect("Point connections require a connected point");
+
+        Rc::clone(connected_point)
     }
 }
 

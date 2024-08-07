@@ -196,6 +196,12 @@ the number of control points: {1}"
 
     #[error("A control point with the same knot coordinates already exists, try inserting manually")]
     TMeshExistingControlPoint,
+
+    #[error("The control point passed does not belong to the current Tmesh")]
+    TMeshForeignControlPoint,
+
+    #[error("The control point being inserted is out of the bounds of the Tmesh")]
+    TMeshOutOfBoundsInsertion,
 }
 
 #[test]
