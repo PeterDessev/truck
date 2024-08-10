@@ -3,7 +3,7 @@ use derive_more::*;
 use serde::{Deserialize, Serialize};
 #[doc(hidden)]
 pub use truck_geometry::prelude::{algo, inv_or_zero};
-pub use truck_geometry::{decorators::*, nurbs::*, specifieds::*};
+pub use truck_geometry::{decorators::*, nurbs::*, specifieds::*,t_spline::*};
 pub use truck_polymesh::PolylineCurve;
 
 /// Leading curve for intersection
@@ -171,6 +171,8 @@ pub enum Surface {
     NurbsSurface(NurbsSurface<Vector4>),
     /// revoluted curve
     RevolutedCurve(Processor<RevolutedCurve<Curve>, Matrix4>),
+    // T-mesh
+    // Tmesh(TMesh<Point3>),
 }
 
 macro_rules! derive_surface_method {

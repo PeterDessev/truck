@@ -58,8 +58,7 @@ impl<P> TMesh<P> {
 
         return TMesh {
             control_points,
-            knot_vectors: None,
-            bezier_domains: RefCell::new(None),
+            knot_vectors: RefCell::new(None),
         };
     }
 
@@ -95,7 +94,7 @@ impl<P> TMesh<P> {
     ///     knot interval in both directions (`con` -> `con_side` != `con` <- `con_side`).
     ///     This should never happen.
     ///
-    /// - `Ok(())` if the control point was successfully added
+    /// - `Ok(Rc<RefCell<TMeshControlPoint<P>>>)` if the control point was successfully added, which itself is returned.
     ///
     /// # Borrows
     /// Mutably borrows `con` and the point located in the direction `connection_side`, and potentially borrows all
@@ -112,7 +111,7 @@ impl<P> TMesh<P> {
         con: Rc<RefCell<TMeshControlPoint<P>>>,
         connection_side: TMeshDirection,
         knot_ratio: f64,
-    ) -> Result<()> {
+    ) -> Result<Rc<RefCell<TMeshControlPoint<P>>>> {
         // Check that the knot ratio is valid
         if 0.0 > knot_ratio || 1.0 < knot_ratio {
             return Err(Error::TMeshInvalidKnotRatio);
@@ -237,9 +236,9 @@ impl<P> TMesh<P> {
         }
 
         // Add control point
-        self.control_points.push(p);
-        self.bezier_domains.replace(None);
-        Ok(())
+        self.control_points.push(Rc::clone(&p));
+        self.knot_vectors.replace(None);
+        Ok(p)
     }
 
     /// Attemps to add a control point to the mesh given the cartesian point `p` and the absolute knot coordinates `knot_coords`
@@ -256,11 +255,15 @@ impl<P> TMesh<P> {
     ///
     /// - `TMeshConnectionNotFound` if no edges are found which intersect the location of the new point.
     ///
-    /// - `Ok(())` if the control point was successfully added.
+    /// - `Ok(Rc<RefCell<TMeshControlPoint<P>>>)` if the control point was successfully added, which itself is returned.
     ///
     /// # Borrows
     /// Immutably borrows every point in the mesh `self`.
-    pub fn try_add_absolute_point(&mut self, p: P, knot_coords: (f64, f64)) -> Result<()> {
+    pub fn try_add_absolute_point(
+        &mut self,
+        p: P,
+        knot_coords: (f64, f64),
+    ) -> Result<Rc<RefCell<TMeshControlPoint<P>>>> {
         // Make sure desred knot coordinates are within mesh bounds
         if knot_coords.0 < 0.0 || knot_coords.0 > 1.0 || knot_coords.1 < 0.0 || knot_coords.1 > 1.0
         {
@@ -467,14 +470,14 @@ impl<P> TMesh<P> {
     ///
     /// # Borrows
     /// Immutably borrows every point in `self.control_points`.
-    fn generate_knot_vectors(&mut self) -> Result<()> {
+    fn generate_knot_vectors(&self) -> Result<()> {
         let mut knot_vecs: Vec<(KnotVec, KnotVec)> = Vec::new();
 
         for control_point in self.control_points.iter() {
             knot_vecs.push(TMesh::get_point_knot_vectors(Rc::clone(&control_point))?);
         }
 
-        self.knot_vectors = Some(knot_vecs);
+        self.knot_vectors.replace(Some(knot_vecs));
         Ok(())
     }
 
@@ -819,6 +822,14 @@ where
     P: PartialEq,
 {
     /// Finds the first point that was added to a T-mesh with a specific cartesian coordinate
+    ///
+    /// # Returns
+    /// - `TMeshControlPointNotFound` if `p` is not found.
+    ///
+    /// - `Ok(Rc<RefCell<TMeshControlPoint<P>>>)` if the corresponding control point is found.
+    ///
+    /// # Borrows
+    /// Immutably borrows every control point in the `self.control_points`.
     pub fn find(&self, p: P) -> Result<Rc<RefCell<TMeshControlPoint<P>>>> {
         Ok(Rc::clone(
             self.control_points()
@@ -827,63 +838,98 @@ where
                 .ok_or(Error::TMeshControlPointNotFound)?,
         ))
     }
+
+    /// Finds a control point with cartesian coordinates `point` and changes them to `new`.
+    ///
+    /// # Returns
+    /// - `TMeshControlPointNotFound` if `point` is not found.
+    ///
+    /// - `Ok(Rc<RefCell<TMeshControlPoint<P>>>)` if the corresponding control point is found.
+    ///
+    /// # Borrows
+    /// Immutably borrows every point in `self.control_points` and mutably borrows the
+    /// control point corresponding to `point` if it is found.
+    pub fn map_point(&mut self, point: P, new: P) -> Result<Rc<RefCell<TMeshControlPoint<P>>>> {
+        let point = self.find(point)?;
+        point.borrow_mut().set_point(new);
+        Ok(point)
+    }
 }
 
 impl<P> TMesh<P>
 where
     P: ControlPoint<f64>,
 {
-    /// Attempts to insert a new control point between two existing control points. In order to do so, the knot vectors
-    /// perpandicular to the connection for two control points in both directions (including the control points which
-    /// define the edge) must be equal. See the figure below for an example.
+    /// Attempts to insert a new control point between two existing control points using the technique form \[Sederberg et al. 2003\]
+    /// called local knot insertion (LKI), returning the added control point if successful. In order to do so, the knot vectors perpandicular
+    /// to the connection for two control points in both directions (including the control points which define the edge) must be equal.
+    /// See the figure below for an example.
     ///
     /// ```
     ///     t1   t2        t3   t4
-    ///     +----+---------+----+
-    ///     |    |         |    |
-    ///     +----+---------+----+
-    ///     |    |         |    |
-    ///  --<+>--{+}--[+]--{+}--<+>--
-    ///     |    |         |    |
-    ///     +----+---------+----+
-    ///     |    |         |    |
-    ///     +----+----+----+----+
+    ///     +-----+----(+)----+-----+
+    ///     |     |           |     |
+    ///     +-(+)-+-----------+-----+
+    ///     |     |           |     |
+    ///  --<+>---{+}---[+]---<+>---<+>--
+    ///     |     |           |     |
+    ///     +-----+-(+)-------+-----+
+    ///     |     |           |     |
+    ///     +-----+-----------+-(+)-+
     /// ```
     ///
-    /// - `<+>` are points which may or may not exist, but if they do not exist, must be replaced with an edge
-    ///     condition. A T-junction will cause an error.
-    /// - `{+}` are points which must exist, one of which will be `p`.
+    /// - `{+}` is `p`, which must exist
+    /// - `<+>` are the other points which must exist. Any other points (other than `p`) may or may not exist,
+    ///      and LKI will succeed so long as the perpandicular knot vectors are equal for all points `<+>` and `{+}`.
     /// - `[+]` is the point to be inserted.
     /// - `t1 - t5` are the knot vectors perpandicular to the axis of insertion
+    /// - `(+)` are points which will not affect or be affected by LKI
     ///
-    /// In the above example, the virtical knot vectors defined by the paramtric spacing between all the points `+` with no
-    /// wrapping must be equal (tollerance is used, so exact floating point equality is not nescessary).
+    /// In the above example, the virtical knot vectors t1, t2, t3, and t4 must be equal
+    /// (tollerance is used, so exact floating point equality is not nescessary).
+    ///
+    /// Other points may exist on any of the horizontal connections, so long as they are not on the primary axis
+    /// (that would change which points `<+>` or `{+}` would be). Some examples are shown in the diagram as `(+)`.
+    /// There can be edges between them, and even induce a connection with the newly inserted point,
+    /// which will be automatically added.
     ///
     /// # Returns
-    ///
-    /// - `TMeshControlPointNotFound` if `p` is an edge condition in the direction `dir`.
-    /// 
-    /// - `TMeshConnectionNotFound` if a T-junction is encountered instead of a control point or an edge condition
+    /// - `TMeshControlPointNotFound` if an edge condition is encountered instead of a control point
     ///     along the axis of insertion (Rule 3 \[Sederberg et al. 2003\]).
-    /// 
-    /// - `TMeshInvalidKnotRatio` if `knot_ratio` is not in [0.0, 1.0]. 
-    /// 
+    ///
+    /// - `TMeshConnectionNotFound` if a T-junction is encountered instead of a control point
+    ///     along the axis of insertion (Rule 3 \[Sederberg et al. 2003\]).
+    ///
+    /// - `TMeshInvalidKnotRatio` if `knot_ratio` is not in [0.0, 1.0].
+    ///
     /// - `TMeshMalformedMesh` if a knot vector was unable to be constructed for any point.
     ///
     /// - `TMeshKnotVectorsNotEqual` if the knot vectors perpandicular to `dir` are not all equal (Rule 3 \[Sederberg et al. 2003\]).
-    /// 
+    ///
     /// - `TMeshForeignControlPoint` if `p` is not a control point in the T-mesh.
-    /// 
-    /// - `TMeshConnectionInvalidKnotInterval` if the connection between `p` and the point in the direction `dir` does 
+    ///
+    /// - `TMeshConnectionInvalidKnotInterval` if the connection between `p` and the point in the direction `dir` does
     ///     not have the same knot interval in both directions.
-    /// 
-    /// - `Ok(())` if the control point was successfully added.
+    ///
+    /// - `Ok(Rc<RefCell<TMeshControlPoint<P>>>)` if the control point was successfully added, where the
+    ///     returned control point is the newly added control point
+    ///
+    /// # Borrows
+    /// Immutably borrows two points in the direction `dir` of `p` and one in the direction `dir.flip()`, as well as two points in
+    /// either direction perpandicular to `dir` for those points.  
+    ///
+    /// Mutably borrows `p` and the point connecteed to `p` in the direction `dir`, as well as the newly created control point,
+    /// which lies between the two.
+    ///
+    /// # Notes on Rule 3
+    /// Though \[Sederberg et al. 2003\] is not explicitly clear about edge condition (T-junctions imply rule 3 is broken), testing has
+    /// revealed that local knot insertion cannot be done on edges connected to a point with one or more edge conditionds.
     pub fn try_local_knot_insertion(
         &mut self,
         p: Rc<RefCell<TMeshControlPoint<P>>>,
         dir: TMeshDirection,
         knot_ratio: f64,
-    ) -> Result<()> {
+    ) -> Result<Rc<RefCell<TMeshControlPoint<P>>>> {
         match p.borrow().con_type(dir) {
             TMeshConnectionType::Edge => return Err(Error::TMeshControlPointNotFound),
             TMeshConnectionType::Tjunction => return Err(Error::TMeshConnectionNotFound),
@@ -899,8 +945,7 @@ where
         // a T-junction) perpandicular and in-line knot vectors of length 5 centered on the axis
         // of insertion and a distance of at most two knots from the point to be inserted must be equal. See Figure 10 in
         // [Sederberg et al. 2003] for details.
-        let mut center_points: Vec<Option<Rc<RefCell<TMeshControlPoint<P>>>>> =
-            Vec::with_capacity(4);
+        let mut center_points: Vec<Rc<RefCell<TMeshControlPoint<P>>>> = Vec::with_capacity(4);
 
         // An example insertion for reference
         //
@@ -912,34 +957,26 @@ where
         center_points.push({
             match p.borrow().con_type(dir.flip()) {
                 // Retrieve connected point
-                TMeshConnectionType::Point => {
-                    Some(Rc::clone(&p.borrow().get_conected_point(dir.flip())))
-                }
-                TMeshConnectionType::Edge => None,
+                TMeshConnectionType::Point => Rc::clone(&p.borrow().get_conected_point(dir.flip())),
+                TMeshConnectionType::Edge => return Err(Error::TMeshControlPointNotFound),
                 TMeshConnectionType::Tjunction => {
                     return Err(Error::TMeshConnectionNotFound);
                 }
             }
         });
-        center_points.push(Some(Rc::clone(&p)));
+        center_points.push(Rc::clone(&p));
         center_points.push({
             let borrow = p.borrow();
             // Checked in the begining of the function with match
-            Some(Rc::clone(&borrow.get_conected_point(dir)))
+            Rc::clone(&borrow.get_conected_point(dir))
         });
         center_points.push({
-            let con_point = Rc::clone(&center_points[2]
-                .as_ref()
-                .expect("center_points[2] is a required control point"));
-                
-            let borrow = con_point.borrow();
+            let borrow = center_points[2].borrow();
 
             match borrow.con_type(dir.flip()).clone() {
                 // Retrieve connected point
-                TMeshConnectionType::Point => {
-                    Some(Rc::clone(&borrow.get_conected_point(dir)))
-                }
-                TMeshConnectionType::Edge => None,
+                TMeshConnectionType::Point => Rc::clone(&borrow.get_conected_point(dir)),
+                TMeshConnectionType::Edge => return Err(Error::TMeshControlPointNotFound),
                 TMeshConnectionType::Tjunction => {
                     return Err(Error::TMeshConnectionNotFound);
                 }
@@ -948,9 +985,7 @@ where
 
         // Store the first knot vector to compare it to the rest. If any do not match, return an error
         let knot_vec_compare: KnotVec = {
-            let point_knots = TMesh::get_point_knot_vectors(Rc::clone(
-                &center_points[1].as_ref().expect("center_points[1] is a required point"),
-            ))?;
+            let point_knots = TMesh::get_point_knot_vectors(Rc::clone(&center_points[1]))?;
 
             // Depending on the direction of insertion, the S or T knot vectors are needed.
             if dir.horizontal() {
@@ -959,16 +994,11 @@ where
                 point_knots.0
             }
         };
-        // Generate knot vector for each point and compare (Compares center_points[1] to itself,
-        // but I am not sure of the best way to get around this. Ask me in a couple of weeks once I've
-        // learned how to use this language).
-        for opt in center_points[1..].iter() {
+        // Compare knot vectors
+        for point in center_points[1..].iter() {
             // Get knot vectors in both directions for the point
-            let point_knots = if let Some(point) = opt {
-                TMesh::get_point_knot_vectors(Rc::clone(point)).map_err(|_| Error::TMeshMalformedMesh)?
-            } else {
-                continue;
-            };
+            let point_knots = TMesh::get_point_knot_vectors(Rc::clone(point))
+                .map_err(|_| Error::TMeshMalformedMesh)?;
 
             // Depending on the direction of insertion, the S or T knot vectors are needed.
             let cur_kv = if dir.horizontal() {
@@ -979,7 +1009,7 @@ where
 
             // Compare knot vectors using so_small because knot vector construction uses
             // knot intervals which are prone to small errors.
-            if cur_kv
+            if !cur_kv
                 .iter()
                 .zip(knot_vec_compare.iter())
                 .all(|t| (t.0 - t.1).so_small())
@@ -991,21 +1021,15 @@ where
         // Get d1 - d6. See Figure 10 in [Sederberg et al. 2003].
         let mut d: Vec<f64> = Vec::with_capacity(6);
         // d1 and d2
-        for opt in center_points[0..2].iter() {
-            d.push(if let Some(point) = opt.as_ref() {
-                point
-                    .borrow()
-                    .get_con_knot(dir.flip())
-                    .ok_or(Error::TMeshConnectionNotFound)?
-            } else {
-                0.0
-            });
+        for point in center_points[0..2].iter() {
+            d.push(
+                TMesh::cast_ray(Rc::clone(point), dir.flip(), 1)
+                    .map_err(|_| Error::TMeshMalformedMesh)?[0],
+            );
         }
         // d3
         d.push(
             center_points[1]
-                .as_ref()
-                .expect("center_points[1] is a requird point")
                 .borrow()
                 .get_con_knot(dir)
                 .ok_or(Error::TMeshConnectionNotFound)?
@@ -1014,59 +1038,64 @@ where
         // d4
         d.push(d.last().expect("Vector should not be empty") * ((1.0 / knot_ratio) - 1.0));
         // d5 and d6
-        for opt in center_points[3..5].iter() {
-            d.push(if let Some(point) = opt.as_ref() {
-                point
-                    .borrow()
-                    .get_con_knot(dir)
-                    .ok_or(Error::TMeshConnectionNotFound)?
-            } else {
-                0.0
-            });
+        for point in center_points[2..4].iter() {
+            d.push(
+                TMesh::cast_ray(Rc::clone(point), dir, 1).map_err(|_| Error::TMeshMalformedMesh)?
+                    [0],
+            );
         }
 
         let cartesian_points: Vec<P> = center_points
             .iter()
-            .map(|opt| {
-                if let Some(p) = opt {
-                    p.borrow().point().clone()
-                } else {
-                    P::origin()
-                }
-            })
+            .map(|p| p.borrow().point().clone())
             .collect();
 
-        // Equations 5, 6, and 7 from [Sederberg et al. 2003].
+        // Equations 5, 6, and 7 from [Sederberg et al. 2003]. Rmember that P3 is not a point in either
+        // cartesian_points or center_points, and arrays in rust are 0 indexed,
         let p2_prime = ((cartesian_points[0].clone() * d[3])
             + (cartesian_points[1].clone().to_vec() * (d[0] + d[1] + d[2])))
             / (d[0] + d[1] + d[2] + d[3]);
 
-        let p4_prime = ((cartesian_points[4].clone() * d[2])
-            + (cartesian_points[3].clone().to_vec() * (d[3] + d[4] + d[5])))
+        let p4_prime = ((cartesian_points[3].clone() * d[2])
+            + (cartesian_points[2].clone().to_vec() * (d[3] + d[4] + d[5])))
             / (d[2] + d[3] + d[4] + d[5]);
 
         let p3_prime = ((cartesian_points[1].clone() * (d[3] + d[4]))
-            + (cartesian_points[3].clone().to_vec() * (d[1] + d[2])))
+            + (cartesian_points[2].clone().to_vec() * (d[1] + d[2])))
             / (d[1] + d[2] + d[3] + d[4]);
 
-        center_points[1]
-            .as_ref()
-            .expect("center_points[1] is a required point")
-            .borrow_mut()
-            .set_point(p2_prime);
+        center_points[1].borrow_mut().set_point(p2_prime);
 
-        center_points[2]
-            .as_ref()
-            .expect("center_points[2] is a required point")
-            .borrow_mut()
-            .set_point(p4_prime);
+        center_points[2].borrow_mut().set_point(p4_prime);
 
-        self.add_control_point(p3_prime, Rc::clone(&p), dir, knot_ratio)?;
-
-        Ok(())
+        return self.add_control_point(p3_prime, Rc::clone(&p), dir, knot_ratio);
     }
 
-    pub fn try_absolute_local_knot_insertion(&mut self, knot_coords: (f64, f64)) -> Result<()> {
+    /// Absolute knot coordinate interface for local knot insertion (LKI). Tries to insert a control point
+    /// at the specified absolute knot coordinates `knot_coords` without changing the shape of the resulting surface.h
+    /// For details on LKI, see [`TMesh::try_local_knot_insertion()`]. In order for the function to succeed, an edge must
+    /// exist which passes through the knot coordinates `knot_coords`, that is, eithr two virtical points or horrizontal
+    /// points stradle the parametric coordinates where the new point is to be inserted.
+    ///
+    /// # Returns
+    /// - `TMeshOutOfBoundsInsertion` if either component of `knot_coords` is not in the range `(0.0, 1.0)`.
+    ///
+    /// - `TMeshExistingControlPoint` if a control point already exists at the parametric coordinates `knot_coords`.
+    ///
+    /// - `TMeshMalformedMesh` if intersecting edges are found.
+    ///
+    /// - `TMeshConnectionNotFound` if no edges are found intersecting the knot coordinates `knot_coords`.
+    ///
+    /// # Borrows
+    /// Immutably borrows every control point in `self`, immutably borrows two points in the direction `dir` of `p`
+    /// and one in the direction `dir.flip()`, as well as two points in either direction perpandicular to `dir` for those points.  
+    ///
+    /// Mutably borrows the two control points which straddle the knot coordinates `knot_coords`, as well as the newly created control point,
+    /// which lies at those knot coordinates.
+    pub fn try_absolute_local_knot_insertion(
+        &mut self,
+        knot_coords: (f64, f64),
+    ) -> Result<Rc<RefCell<TMeshControlPoint<P>>>> {
         // Make sure desred knot coordinates are within msh bounds
         if knot_coords.0 < 0.0 || knot_coords.0 > 1.0 || knot_coords.1 < 0.0 || knot_coords.1 > 1.0
         {
@@ -1247,17 +1276,10 @@ where
     ///
     /// Mutably borrows `self.bezier_domains`.
     pub fn subs(&self, s: f64, t: f64) -> Result<P> {
-        // Generate bezier domains and knot vectors if stale
-        if self.bezier_domains.borrow().is_none() {
-            self.bezier_domains
-                .replace(Some(Box::new(self.try_bezier_domains()?)));
-            self.bezier_domains
-                .borrow_mut()
-                .as_mut()
-                .expect("Bezier domains should have succesfully generated or an error produced")
-                .generate_knot_vectors()?;
+        // Generate knot vectors  if stale
+        if self.knot_vectors.borrow().is_none() {
+            self.generate_knot_vectors()?;
         }
-
         // S is horizontal
         // T is virtical
 
@@ -1328,12 +1350,9 @@ where
             };
 
             basis_evaluations.push({
-                let borrow = self.bezier_domains.borrow();
+                let borrow = self.knot_vectors.borrow();
 
                 let knot_vectors = &borrow
-                    .as_ref()
-                    .expect("Program should not reach basis evaluation if bezier generation failed")
-                    .knot_vectors
                     .as_ref()
                     .expect("Knot vectors should have successfully generated or an error returned")
                     [i];
@@ -1342,61 +1361,12 @@ where
                 let t_eval = basis_function(t, knot_vectors.1.to_vec());
                 s_eval * t_eval
             });
-            // basis_functions.push(move |s_param: f64, t_param: f64| -> P {
-            //     // Input point is located outside of influence domain of basis function.
-            //     if s_param < knots.0[0]
-            //         || s_param > knots.0[4]
-            //         || t_param < knots.1[0]
-            //         || t_param > knots.1[4]
-            //     {
-            //         return point * 0.0;
-            //     }
-            //     // Using De Boor's algorithm is faster than brute force, and we
-            //     // don't need the individual polynomial coefficients
-            //     // From: https://pages.mtu.edu/~shene/COURSES/cs3621/NOTES/spline/B-spline/de-Boor.html
-            //     const P: usize = 3;
-            //     //      u = s or t
-            //     //
-            //     // The contribution of the current point is a tensor product of the two B splines.
-            //     // Compute each individually and then multiply
-            //
-            //     // First B spline (horizontal)
-            //     for knot_v in [&knots.0, &knots.1] {
-            //         // k from the website
-            //         let floor_idx = knot_v
-            //             .floor(s_param)
-            //             .expect("Bounds were previously checked");
-            //         let h: usize;
-            //         // Mutliplicity is s on the website
-            //         let multiplicity: usize;
-            //
-            //         // "If u lies in (u_k, u_k+1), h = p"
-            //         if knot_v[floor_idx] != s_param {
-            //             multiplicity = 0;
-            //             h = P;
-            //
-            //         // "If u = u_k, h = p - s"
-            //         } else {
-            //             multiplicity = knot_v.multiplicity(floor_idx);
-            //             h = P - multiplicity;
-            //         }
-            //
-            //         for r in 1..=h {
-            //             for i in (floor_idx - P + r)..=(floor_idx - multiplicity) {}
-            //         }
-            //     }
-            //
-            //     point
-            // })
         }
 
-        let numerator = basis_evaluations.iter().zip(self.bezier_domains
-                    .borrow()
-                    .as_ref()
-                    .expect(
-                        "Control flow should not reach basis multiplication if bezier domain generation failed",
-                    )
-                    .control_points()[..self.control_points().len()]
+        let numerator = basis_evaluations
+            .iter()
+            .zip(
+                self.control_points()
                     .iter()
                     .map(|c| c.borrow().point().clone()),
             )
@@ -1576,6 +1546,80 @@ impl<P> fmt::Display for TMesh<P> {
     }
 }
 
+impl<P> TMesh<P>
+where
+    P: Clone,
+{
+    /// Subdivides a mesh by inserting a new control point parametrically halfway between every pair of connected control points 
+    /// already present in the mesh. This includes any implicit edges created during the subdivision of the mesh. Thus, a 2x2 
+    /// mesh created with the `new` function will become a 3x3 mesh with a point in the center of the mesh. The cartesian coordinates 
+    /// of the new control points is determined with a caller-specified closure, `f`, which will be given the two control points 
+    /// which will be on either side of the new control point. The first point parameter passed to `f` will always be either the 
+    /// left or bottom control point in a pair, depending on the edge being subdivided.
+    /// 
+    /// # Returns
+    /// - `TMeshConnectionInvalidKnotInterval` if a connection is found which has mismatched knot intervals 
+    ///     depending on which point in the connection is referenced.
+    ///
+    /// - `Ok()` if the mesh was successfully subdivided.
+    /// 
+    /// # Borrows
+    /// Mutably borrows every control point in `self.control_points`.
+    pub fn subdivide<F>(&mut self, f: F) -> Result<()>
+    where
+        F: Fn(P, P) -> P,
+    {
+        // Get all (pairs of) control points with horizontal point to point connections
+        let righties: Vec<_> = self
+            .control_points()
+            .iter()
+            .filter(|p| p.borrow().con_type(TMeshDirection::RIGHT) == TMeshConnectionType::Point)
+            .map(|p| Rc::clone(p))
+            .collect();
+
+        // Split all the connections in two
+        for cont_p in righties {
+            // Get the new control point using the caller supplied closure
+            let p = f(
+                cont_p.borrow().point().clone(),
+                cont_p
+                    .borrow()
+                    .get_conected_point(TMeshDirection::RIGHT)
+                    .borrow()
+                    .point()
+                    .clone(),
+            );
+
+            self.add_control_point(p, Rc::clone(&cont_p), TMeshDirection::RIGHT, 0.5)?;
+        }
+
+        // The above for loop will create new connections in the DOWN direction through implicit connections.
+        // Thus, the filtering of the downies must happen after addiing the righties.
+        let uppies: Vec<_> = self
+            .control_points()
+            .iter()
+            .filter(|p| p.borrow().con_type(TMeshDirection::UP) == TMeshConnectionType::Point)
+            .map(|p| Rc::clone(p))
+            .collect();
+
+        for cont_p in uppies {
+            let p = f(
+                cont_p.borrow().point().clone(),
+                cont_p
+                    .borrow()
+                    .get_conected_point(TMeshDirection::UP)
+                    .borrow()
+                    .point()
+                    .clone(),
+            );
+
+            self.add_control_point(p, Rc::clone(&cont_p), TMeshDirection::UP, 0.5)?;
+        }
+
+        Ok(())
+    }
+}
+
 impl<P> Clone for TMesh<P>
 where
     P: Clone,
@@ -1709,8 +1753,7 @@ where
 
         TMesh {
             control_points: points_copy,
-            knot_vectors: None,
-            bezier_domains: RefCell::new(None),
+            knot_vectors: RefCell::new(None),
         }
     }
 }
@@ -1731,7 +1774,11 @@ impl<T> TMesh<T>
 where
     T: Debug + Clone,
 {
-    pub fn print_debug_info(&self) {
+    /// Prints the knot vectors for every point in the mesh.
+    /// 
+    /// # Borrows
+    /// Immutably borrows every point in `self.control_points`
+    pub fn print_knot_vectors(&self) {
         for point in self.control_points() {
             let cart = {
                 let borrow = point.borrow();
@@ -2679,6 +2726,7 @@ mod tests {
             }))
     }
 
+    /// Creates a plane of the form `x + y = z` and solves it using `subs`.
     #[test]
     fn test_t_mesh_subs() {
         const C: usize = 100;
@@ -2689,9 +2737,8 @@ mod tests {
             Point3::from((0.0, 1.0, 1.0)),
         ];
 
-        // Tmesh is now a surface where all point on the surface are of the form (f(x), g(y), f(x) + g(y))
-        // approximates x + y = z with medial x and y values
-        let mut mesh = TMesh::new(points, 1.0);
+        // Tmesh is now the surface x + y = z
+        let mesh = TMesh::new(points, 1.0);
 
         for s in 0..C {
             let s = s as f64 / C as f64;
@@ -2704,6 +2751,380 @@ mod tests {
                 assert!(
                     ((p.x + p.y) - p.z).so_small(),
                     "Returned subs value does not match expectation."
+                );
+            }
+        }
+    }
+
+    /// Returns a point half-way between `a` and `b`.
+    fn average_points(a: Point3, b: Point3) -> Point3 {
+        0.5 * (a + ControlPoint::to_vec(b))
+    }
+
+    /// Subdivides a T-mesh from a two by two into a three by three, checking that the connections and knot vectors
+    /// are correct. Does not check if control points are correctly spaced in cartesian space, since that is calculated
+    /// with a caller provided function.
+    #[test]
+    fn test_t_mesh_subdivide() {
+        let points = [
+            Point3::from((0.0, 0.0, 0.0)),
+            Point3::from((1.0, 0.0, 1.0)),
+            Point3::from((1.0, 1.0, 2.0)),
+            Point3::from((0.0, 1.0, 1.0)),
+        ];
+
+        // Tmesh is now a surface where all point on the surface are of the form (f(x), g(y), f(x) + g(y))
+        // approximates x + y = z with medial x and y values
+        let mut mesh = TMesh::new(points, 1.0);
+
+        // Subdivision should be successful
+        let sub_res = mesh.subdivide(average_points);
+        assert!(
+            sub_res.is_ok(),
+            "Error while subdividing mesh {}.",
+            sub_res.err().unwrap()
+        );
+
+        // Mesh becomes a 3x3 grid, 9 control points
+        assert_eq!(
+            mesh.control_points().len(),
+            9,
+            "Incorrect number of control points found in the subdivided mesh."
+        );
+
+        // Test middle point for inifered connection shenanegins
+        let middle_point = mesh
+            .find(Point3::from((0.5, 0.5, 1.0)))
+            .expect("Control point should be located in subdivided mesh");
+        for dir in TMeshDirection::iter() {
+            assert_eq!(
+                middle_point.borrow().con_type(dir),
+                TMeshConnectionType::Point,
+                "Expected a point connection in the direction {}.",
+                dir
+            );
+            assert!(
+                (middle_point.borrow().get_con_knot(dir).unwrap() - 0.5).so_small(),
+                "Expected knot interval of 0.5."
+            );
+        }
+
+        // Make sure each point still follows the x + y = z scheme (averaging will have no effect on this)
+        for point in mesh.control_points.iter() {
+            let p = point.borrow().point().clone();
+            assert!(
+                (p.x + p.y - p.z).so_small(),
+                "Point does not follow expected cartesian scheme."
+            );
+        }
+    }
+
+    /// Checks if two `Point3` instances are eqaul using tollerance.
+    fn points_eq(a: Point3, b: Point3) -> bool {
+        (a.x + a.y + a.z - (b.x + b.y + b.z)).so_small()
+    }
+
+    /// Test legal local knot insertion by creating two identical surfaces, then performing LKI on one of
+    /// them and checking with `subs` if the surfaces differ. In order to maximize any differences between the
+    /// surfaces, the control points which are affected by the LKI are moved such that they have no lienear
+    /// realtion between them in any axis. The cartesian space of the coordinates is cross-referenced with manually
+    /// performed mathematics, which can be seen in desmos links in some of the inline comments on top of the manual
+    /// confirmation through the use of `subs`.
+    #[test]
+    fn test_t_mesh_local_knot_insertion_no_edge_conditions() {
+        const N: usize = 25;
+        let points = [
+            Point3::from((0.0, 0.0, 0.0)),
+            Point3::from((1.0, 0.0, 1.0)),
+            Point3::from((1.0, 1.0, 0.0)),
+            Point3::from((0.0, 1.0, 1.0)),
+        ];
+
+        let mut mesh = TMesh::new(points, 1.0);
+
+        // Make mesh a 5x5
+        mesh.subdivide(average_points)
+            .expect("Mesh is not malformed.");
+        mesh.subdivide(average_points)
+            .expect("Mesh is not malformed.");
+
+        // Modify mesh so that the form is highly dependant on all elements of a point. Nescessary because if the control points
+        // are on a (flat) plane, then the elements which change due to LKI (x and y) can be almost anything and the limit surface
+        // will be the same. If the points are more scattered, then deviation in elements which get canceled out by the "averging"
+        // nature of the LKI algorithm will become more evident in the elements which are not "averaged out".
+        mesh.map_point(
+            Point3::from((0.25, 0.25, 0.375)),
+            Point3::from((0.25, 0.10, 0.375)),
+        )
+        .expect("Control point is in mesh");
+        mesh.map_point(
+            Point3::from((0.50, 0.25, 0.500)),
+            Point3::from((0.50, 0.30, 0.300)),
+        )
+        .expect("Control point is in mesh");
+        mesh.map_point(
+            Point3::from((0.75, 0.25, 0.625)),
+            Point3::from((0.75, 0.15, 0.625)),
+        )
+        .expect("Control point is in mesh");
+        mesh.map_point(
+            Point3::from((1.00, 0.25, 0.750)),
+            Point3::from((1.00, 0.25, 0.200)),
+        )
+        .expect("Control point is in mesh");
+
+        let mut test = mesh.clone();
+
+        let ins_point = test
+            .try_local_knot_insertion(
+                test.find(Point3::from((0.50, 0.30, 0.300)))
+                    .expect("Point is a valid point in mesh"),
+                TMeshDirection::RIGHT,
+                0.1,
+            )
+            .expect("Local knot insertion should succeed");
+
+        let p3_prime = ins_point.borrow().point().clone();
+
+        let p4_prime = ins_point
+            .borrow()
+            .get_conected_point(TMeshDirection::RIGHT)
+            .borrow()
+            .point()
+            .clone();
+
+        let p2_prime = ins_point
+            .borrow()
+            .get_conected_point(TMeshDirection::LEFT)
+            .borrow()
+            .point()
+            .clone();
+
+        // Values verified via https://www.desmos.com/3d/pitkyckhfn
+        assert!(
+            points_eq(p3_prime, Point3::from((0.5916666, 0.245, 0.41916666))),
+            "Inserted point does not match expected cartesian coordinates"
+        );
+        assert!(
+            points_eq(p4_prime, Point3::from((0.75416666, 0.1516666, 0.617916666))),
+            "Point right of inserted point does not match expected cartesian coordinates"
+        );
+        assert!(
+            points_eq(p2_prime, Point3::from((0.425, 0.24, 0.3225))),
+            "Point left of inserted point does not match expected cartesian coordinates"
+        );
+
+        for s in 0..N {
+            let s = s as f64 / N as f64;
+            for t in 0..N {
+                let t = t as f64 / N as f64;
+                let mesh_sub = mesh.subs(s, t).expect("Parametric point is within bounds");
+                let test_sub = test.subs(s, t).expect("Parametric point is within bounds");
+                assert!(
+                    (mesh_sub - test_sub).so_small(),
+                    "Surfaces do not match at ({}, {}).",
+                    s,
+                    t
+                );
+            }
+        }
+    }
+
+    /// Test illegal local knot insertion by creating two identical surfaces, then performing LKI on one of
+    /// them and checking if an error is returned. Initially, this test ould have succeeded (at leats, LKI would have),
+    /// however, it was discovered that the surface would change shape if done with one of the control points missing
+    /// (substituted with an edge condition). Thus, that change was reverted.
+    #[test]
+    fn test_t_mesh_local_knot_insertion_edge_conditions() {
+        let points = [
+            Point3::from((0.0, 0.0, 0.0)),
+            Point3::from((1.0, 0.0, 1.0)),
+            Point3::from((1.0, 1.0, 0.0)),
+            Point3::from((0.0, 1.0, 1.0)),
+        ];
+
+        let mut mesh = TMesh::new(points, 1.0);
+
+        // Make mesh a 5x5
+        let _ = mesh.subdivide(average_points);
+        let _ = mesh.subdivide(average_points);
+
+        println!("{}", mesh);
+
+        let mut test = mesh.clone();
+        let ins_point = test.try_local_knot_insertion(
+            test.find(Point3::from((1.0, 1.0, 0.0)))
+                .expect("Point is a valid point in mesh"),
+            TMeshDirection::DOWN,
+            0.1,
+        );
+
+        assert!(
+            ins_point.is_err(),
+            "Local knot insertion should not have succeedd"
+        );
+    }
+
+    #[test]
+    fn test_t_mesh_absolute_local_knot_insertion_mesh_construction() {
+        let points = [
+            Point3::from((0.0, 0.0, 0.0)),
+            Point3::from((1.0, 0.0, 0.0)),
+            Point3::from((1.0, 1.0, 0.0)),
+            Point3::from((0.0, 1.0, 0.0)),
+        ];
+
+        // 5x5
+        let mut mesh = TMesh::new(points, 1.0);
+        mesh.subdivide(average_points)
+            .expect("Mesh is not malformed.");
+        mesh.subdivide(average_points)
+            .expect("Mesh is not malformed.");
+
+        // Insert virtical aspect of the plus
+        mesh.try_absolute_local_knot_insertion((0.52, 0.00))
+            .expect("Legal point insertion");
+        mesh.try_absolute_local_knot_insertion((0.52, 0.25))
+            .expect("Legal point insertion");
+        mesh.try_absolute_local_knot_insertion((0.52, 0.50))
+            .expect("Legal point insertion");
+        mesh.try_absolute_local_knot_insertion((0.52, 0.75))
+            .expect("Legal point insertion");
+        mesh.try_absolute_local_knot_insertion((0.52, 1.00))
+            .expect("Legal point insertion");
+
+        // Insert horrizontal aspect of the plus
+        mesh.try_absolute_local_knot_insertion((0.50, 0.52))
+            .expect("Legal point insertion");
+        mesh.try_absolute_local_knot_insertion((0.75, 0.52))
+            .expect("Legal point insertion");
+
+        // Insert center point of the plus
+        let center_point = mesh
+            .try_absolute_local_knot_insertion((0.52, 0.52))
+            .expect("Legal point insertion");
+
+        // Test absolute knot coordinates of the center point.
+        let knot_coords = center_point.borrow().get_knot_coordinates();
+        assert!(
+            (knot_coords.0 + knot_coords.1 - 0.52 - 0.52).so_small(),
+            "Knot coordinates for center point do not match expectation."
+        );
+
+        // At this point, there is little reason to check if the knot intervals match the expectation, since the
+        // center point insertion would have failed, or one of the assertions below would have failed because the
+        // LKI is highly sensative to knot intervals, thus, errors in the algorithm would either lead to a failure
+        // in future insertions, a mismatch in absolut knot coordinates, or a missing point connection (or two).
+        for dir in TMeshDirection::iter() {
+            assert_eq!(
+                center_point.borrow().con_type(dir),
+                TMeshConnectionType::Point,
+                "Center point is not connected to a point in the direction {}.",
+                dir
+            );
+        }
+    }
+
+    /// Constructs the following T-mesh, insreting a point which would require the use of the ray-casting algorithm to
+    /// calculate on of the knot intervals used in the calculation of the new cartesian coordinates of the control
+    /// points affected by LKI. A comparison much like the other LKI insertion tests is done, where two identical meshes
+    ///  are constructed, and then compared using `subs` after one has been modified through the use of LKI. Though a T-junction
+    /// technically exists in the LKI, none of the LKI rules are broken, since the four required control points still exist,
+    /// and their perpandicular knot vectors are all equal.
+    ///
+    /// Uses absolute local knot insertion.
+    ///
+    /// ```
+    ///        |   |   |   |   |   |
+    /// 1.00 --+---+--[+]--+---+---+--
+    ///        |   |   |   |   |   |
+    /// 0.75 --+---+--[+]--+---+---+--
+    ///        |   |   |   |   |   |
+    /// 0.52   |   +--<+>--+   |   |
+    ///        |   |   |   |   |   |
+    /// 0.50 --+---+--{+}--+---+---+--
+    ///        |   |   |   |   |   |
+    /// 0.25 --+---+--[+]--+---+---+--
+    ///        |   |       |   |   |
+    /// 0.00 --+---+-------+---+---+--
+    ///        |   |       |   |   |
+    ///        0.00|   0.27|   0.75|
+    ///            0.25    0.50    1.00
+    /// ```
+    ///
+    /// - `[+]` are control points which are required by LKI
+    /// - `{+}` is the control point from which the algorithm will insert the new control point using the `try_local_knot_insertion` function.
+    /// - `<+>` is the point that is inserted in one mesh and not the other.
+    #[test]
+    fn test_t_mesh_local_knot_insertion_force_ray_casting() {
+        const N: usize = 25;
+        let points = [
+            Point3::from((0.0, 0.0, 0.0)),
+            Point3::from((1.0, 0.0, 1.0)),
+            Point3::from((1.0, 1.0, 0.0)),
+            Point3::from((0.0, 1.0, 1.0)),
+        ];
+
+        // 5x5
+        let mut mesh = TMesh::new(points, 1.0);
+        mesh.subdivide(average_points)
+            .expect("Mesh is not malformed.");
+        mesh.subdivide(average_points)
+            .expect("Mesh is not malformed.");
+
+        // Mangle linearity of control points in cartesian space
+        mesh.map_point(
+            Point3::from((0.25, 0.25, 0.375)),
+            Point3::from((0.10, 0.25, 0.375)),
+        )
+        .expect("Control point is in mesh");
+        mesh.map_point(
+            Point3::from((0.25, 0.50, 0.500)),
+            Point3::from((0.30, 0.50, 0.300)),
+        )
+        .expect("Control point is in mesh");
+        mesh.map_point(
+            Point3::from((0.25, 0.75, 0.625)),
+            Point3::from((0.15, 0.75, 0.625)),
+        )
+        .expect("Control point is in mesh");
+        mesh.map_point(
+            Point3::from((0.25, 1.00, 0.750)),
+            Point3::from((0.25, 1.00, 0.200)),
+        )
+        .expect("Control point is in mesh");
+
+        // Insert virtical aspect of the plus
+        mesh.try_absolute_local_knot_insertion((0.27, 0.25))
+            .expect("Legal point insertion");
+        mesh.try_absolute_local_knot_insertion((0.27, 0.50))
+            .expect("Legal point insertion");
+        mesh.try_absolute_local_knot_insertion((0.27, 0.75))
+            .expect("Legal point insertion");
+        mesh.try_absolute_local_knot_insertion((0.27, 1.00))
+            .expect("Legal point insertion");
+
+        // Insert horrizontal aspect of the plus
+        mesh.try_absolute_local_knot_insertion((0.25, 0.52))
+            .expect("Legal point insertion");
+        mesh.try_absolute_local_knot_insertion((0.50, 0.52))
+            .expect("Legal point insertion");
+
+        let mut test = mesh.clone();
+        test.try_absolute_local_knot_insertion((0.27, 0.52))
+            .expect("Legal point insertion");
+
+        for s in 0..N {
+            let s = s as f64 / N as f64;
+            for t in 0..N {
+                let t = t as f64 / N as f64;
+                let mesh_sub = mesh.subs(s, t).expect("Parametric point is within bounds");
+                let test_sub = test.subs(s, t).expect("Parametric point is within bounds");
+                assert!(
+                    (mesh_sub - test_sub).so_small(),
+                    "Surfaces do not match at ({}, {}).",
+                    s,
+                    t
                 );
             }
         }
