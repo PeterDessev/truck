@@ -172,7 +172,7 @@ pub enum Surface {
     /// revoluted curve
     RevolutedCurve(Processor<RevolutedCurve<Curve>, Matrix4>),
     // T-mesh
-    // Tmesh(TMesh<Point3>),
+    // Tmesh(Tmesh<Point3>),
 }
 
 macro_rules! derive_surface_method {

@@ -18,10 +18,10 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use truck_base::cgmath64::control_point::ControlPoint;
 
-pub type TMeshConnection<P> = (Option<Rc<RefCell<TMeshControlPoint<P>>>>, f64);
+pub type TmeshConnection<P> = (Option<Rc<RefCell<TmeshControlPoint<P>>>>, f64);
 
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub enum TMeshConnectionType {
+pub enum TmeshConnectionType {
     Point,
     Edge,
     Tjunction,
@@ -30,14 +30,14 @@ pub enum TMeshConnectionType {
 ///
 /// Described in \[Sederberg et al. 2003\].
 #[derive(PartialEq, Debug)]
-pub struct TMeshControlPoint<P> {
+pub struct TmeshControlPoint<P> {
     point: P, // The control point location in Cartesian space
 
     // The four possible connections to other control points and thier weights.
     // They are, from index 0-3, the top, right, bottom, and left connections, respectively.
     // A connection may still have a weight even if it does not connect to another control point;
     // For details, see Figure 8 of [Sederberg et al. 2003].
-    connections: [Option<TMeshConnection<P>>; 4],
+    connections: [Option<TmeshConnection<P>>; 4],
 
     // The "absolute" knot coordinates of the control point in the context of the mesh.
     // (horizontal, virtical), RIGHT and UP are the directions in which a delta corresponds
@@ -52,21 +52,21 @@ pub struct TMeshControlPoint<P> {
 /// possible connections with other adjacent points in the mesh. Each connection has
 /// a knot interval, which may be any number greater than or equal to 0.
 #[derive(PartialEq, Debug)]
-pub struct TMesh<P> {
-    control_points: Vec<Rc<RefCell<TMeshControlPoint<P>>>>,
+pub struct Tmesh<P> {
+    control_points: Vec<Rc<RefCell<TmeshControlPoint<P>>>>,
 
     knot_vectors: RefCell<Option<Vec<(KnotVec, KnotVec)>>>,
 }
 
-/// # TMeshDirrection
+/// # TmeshDirrection
 ///
 /// A C-style enum designed to enforce T-mesh control point directionality.
 #[derive(Clone, PartialEq, Debug, Copy)]
-pub enum TMeshDirection {
-    UP = 0,
-    RIGHT = 1,
-    DOWN = 2,
-    LEFT = 3,
+pub enum TmeshDirection {
+    Up = 0,
+    Right = 1,
+    Down = 2,
+    Left = 3,
 }
 
 /// # T-NURCC Control Point

@@ -2,7 +2,7 @@ use super::*;
 use crate::errors::Error;
 use std::fmt;
 
-impl<P> TMesh<P> {
+impl<P> Tmesh<P> {
     /// Constructs a new rectangular T-mesh from four points in space and a value for
     /// outward-facing knot intervals. The result is the following mesh, where the
     /// numbers are the indecies of the array `points`. The knot interval between
@@ -14,12 +14,12 @@ impl<P> TMesh<P> {
     /// --+---+--
     ///  0|   |1
     /// ```
-    pub fn new(points: [P; 4], edge_knot_interval: f64) -> TMesh<P> {
+    pub fn new(points: [P; 4], edge_knot_interval: f64) -> Tmesh<P> {
         // Convert points into control points
-        let control_points: Vec<Rc<RefCell<TMeshControlPoint<P>>>> = Vec::from(points)
+        let control_points: Vec<Rc<RefCell<TmeshControlPoint<P>>>> = Vec::from(points)
             .into_iter()
             .map(|p| {
-                let cont_point = TMeshControlPoint::new(p, edge_knot_interval);
+                let cont_point = TmeshControlPoint::new(p, edge_knot_interval);
                 Rc::new(RefCell::new(cont_point))
             })
             .collect();
@@ -32,7 +32,7 @@ impl<P> TMesh<P> {
             .expect("No connections have been created for the current mesh");
 
         // Connect control points according to the diagram in the docs
-        let mut dir = TMeshDirection::RIGHT;
+        let mut dir = TmeshDirection::Right;
         for i in 0..4 {
             control_points[i]
                 .borrow_mut()
@@ -45,7 +45,7 @@ impl<P> TMesh<P> {
                 .expect("Point edge conditions are known at compile time");
 
             // Connect the point i to the point i plus one
-            TMeshControlPoint::connect(
+            TmeshControlPoint::connect(
                 Rc::clone(&control_points[i % 4]),
                 Rc::clone(&control_points[(i + 1) % 4]),
                 dir,
@@ -56,14 +56,14 @@ impl<P> TMesh<P> {
             dir = dir.anti_clockwise();
         }
 
-        return TMesh {
+        return Tmesh {
             control_points,
             knot_vectors: RefCell::new(None),
         };
     }
 
     /// Returns an immutable reference to the control points vector
-    pub fn control_points(&self) -> &Vec<Rc<RefCell<TMeshControlPoint<P>>>> {
+    pub fn control_points(&self) -> &Vec<Rc<RefCell<TmeshControlPoint<P>>>> {
         return &self.control_points;
     }
 
@@ -81,20 +81,20 @@ impl<P> TMesh<P> {
     /// without changing the shape of the surface.
     ///
     /// # Returns
-    /// - `TMeshInvalidKnotRatio` if `knot_ratio` is not in \[0.0, 1.0\].
+    /// - `TmeshInvalidKnotRatio` if `knot_ratio` is not in \[0.0, 1.0\].
     ///
-    /// - `TMeshConnectionNotFound` if `con` has no connection on `connection_side`.
+    /// - `TmeshConnectionNotFound` if `con` has no connection on `connection_side`.
     ///
-    /// - `TMeshControlPointNotFound` if `con` is an edge condition on `connction_side`.
+    /// - `TmeshControlPointNotFound` if `con` is an edge condition on `connction_side`.
     ///
-    /// - `TMeshForeignControlPoint` if `con` is not a control point in the T-mesh.
+    /// - `TmeshForeignControlPoint` if `con` is not a control point in the T-mesh.
     ///
-    /// - `TMeshConnectionInvalidKnotInterval` if the connection between `con`
+    /// - `TmeshConnectionInvalidKnotInterval` if the connection between `con`
     ///     and the point in the direction `connection_side`, `con_side`, does not have the same
     ///     knot interval in both directions (`con` -> `con_side` != `con` <- `con_side`).
     ///     This should never happen.
     ///
-    /// - `Ok(Rc<RefCell<TMeshControlPoint<P>>>)` if the control point was successfully added, which itself is returned.
+    /// - `Ok(Rc<RefCell<TmeshControlPoint<P>>>)` if the control point was successfully added, which itself is returned.
     ///
     /// # Borrows
     /// Mutably borrows `con` and the point located in the direction `connection_side`, and potentially borrows all
@@ -108,13 +108,13 @@ impl<P> TMesh<P> {
     pub fn add_control_point(
         &mut self,
         p: P,
-        con: Rc<RefCell<TMeshControlPoint<P>>>,
-        connection_side: TMeshDirection,
+        con: Rc<RefCell<TmeshControlPoint<P>>>,
+        connection_side: TmeshDirection,
         knot_ratio: f64,
-    ) -> Result<Rc<RefCell<TMeshControlPoint<P>>>> {
+    ) -> Result<Rc<RefCell<TmeshControlPoint<P>>>> {
         // Check that the knot ratio is valid
         if 0.0 > knot_ratio || 1.0 < knot_ratio {
-            return Err(Error::TMeshInvalidKnotRatio);
+            return Err(Error::TmeshInvalidKnotRatio);
         }
 
         // If con is not found in the mesh, return the corresponding error.
@@ -124,7 +124,7 @@ impl<P> TMesh<P> {
             .position(|x| Rc::ptr_eq(x, &con))
             .is_none()
         {
-            return Err(Error::TMeshForeignControlPoint);
+            return Err(Error::TmeshForeignControlPoint);
         }
 
         // Get the point currently connected to the connection point. Returns the
@@ -136,21 +136,21 @@ impl<P> TMesh<P> {
 
         // Edge weights for p are set to 0.0, however, the final step will overwrite this
         // if a different edge weight was specified in the T-mesh constructor
-        let p = Rc::new(RefCell::new(TMeshControlPoint::new(p, 0.0)));
+        let p = Rc::new(RefCell::new(TmeshControlPoint::new(p, 0.0)));
 
         let knot_interval = con
             .borrow()
             .get_con_knot(connection_side)
-            .ok_or(Error::TMeshConnectionNotFound)?;
+            .ok_or(Error::TmeshConnectionNotFound)?;
 
         let other_knot_interval = other_point
             .borrow()
             .get_con_knot(connection_side.flip())
-            .ok_or(Error::TMeshConnectionNotFound)?;
+            .ok_or(Error::TmeshConnectionNotFound)?;
 
         // Confirm that the knot intervals are the same in both directions.
         if !(knot_interval - other_knot_interval).so_small() {
-            return Err(Error::TMeshConnectionInvalidKnotInterval);
+            return Err(Error::TmeshConnectionInvalidKnotInterval);
         }
 
         // Break connections between con_point and other_point
@@ -169,22 +169,22 @@ impl<P> TMesh<P> {
         // Insert p with the proper knot intervals.
         // con <-> other becomes con <-> p <-> other
         // con <-> p
-        TMeshControlPoint::connect(
+        TmeshControlPoint::connect(
             Rc::clone(&con),
             Rc::clone(&p),
             connection_side,
             knot_interval * knot_ratio,
         )
-        .map_err(|_| Error::TMeshUnkownError)?;
+        .map_err(|_| Error::TmeshUnkownError)?;
 
         // p <-> other
-        TMeshControlPoint::connect(
+        TmeshControlPoint::connect(
             Rc::clone(&p),
             Rc::clone(&other_point),
             connection_side,
             knot_interval * (1.0 - knot_ratio),
         )
-        .map_err(|_| Error::TMeshUnkownError)?;
+        .map_err(|_| Error::TmeshUnkownError)?;
 
         // When a new point is added, there can only possibly be edge conditions on
         // the two sides perpendicular to the connection. If there is no edge condition,
@@ -193,7 +193,7 @@ impl<P> TMesh<P> {
 
         // TODO: Currently this code does not allow for knot intervals of 0, and needs to be
         // updated once a solution to figure 9 in [Sederberg et al. 2003] is found.
-        if con.borrow().con_type(connection_side.clockwise()) == TMeshConnectionType::Edge {
+        if con.borrow().con_type(connection_side.clockwise()) == TmeshConnectionType::Edge {
             let edge_weight = con
                 .borrow()
                 .get_con_knot(connection_side.clockwise())
@@ -211,10 +211,10 @@ impl<P> TMesh<P> {
             // If a point that satisfies Rule 2 from [Sederberg et al. 2003] is found, connect it.
             // Should also never return an error.
             self.find_inferred_connection(Rc::clone(&p), connection_side.clockwise())
-                .map_err(|_| Error::TMeshUnkownError)?;
+                .map_err(|_| Error::TmeshUnkownError)?;
         }
 
-        if con.borrow().con_type(connection_side.anti_clockwise()) == TMeshConnectionType::Edge {
+        if con.borrow().con_type(connection_side.anti_clockwise()) == TmeshConnectionType::Edge {
             let edge_weight = con
                 .borrow()
                 .get_con_knot(connection_side.anti_clockwise())
@@ -232,7 +232,7 @@ impl<P> TMesh<P> {
             // If a point that satisfies Rule 2 from [Sederberg et al. 2003] is found, connect it.
             // Should also never return an error.
             self.find_inferred_connection(Rc::clone(&p), connection_side.anti_clockwise())
-                .map_err(|_| Error::TMeshUnkownError)?;
+                .map_err(|_| Error::TmeshUnkownError)?;
         }
 
         // Add control point
@@ -247,15 +247,15 @@ impl<P> TMesh<P> {
     /// insert the zero knot is ambiguous.
     ///
     /// # Returns
-    /// - `TMeshOutOfBoundsInsertion` if a control point is being inserted with either knot coordinate out of the range `[0.0, 1.0]`.
+    /// - `TmeshOutOfBoundsInsertion` if a control point is being inserted with either knot coordinate out of the range `[0.0, 1.0]`.
     ///
-    /// - `TMeshExistingControlPoint` if a control point already exists at parametric coordinates `knot_coords`.
+    /// - `TmeshExistingControlPoint` if a control point already exists at parametric coordinates `knot_coords`.
     ///
-    /// - `TMeshMalformedMesh` if multiple edges are found which intersect the location of the new point.
+    /// - `TmeshMalformedMesh` if multiple edges are found which intersect the location of the new point.
     ///
-    /// - `TMeshConnectionNotFound` if no edges are found which intersect the location of the new point.
+    /// - `TmeshConnectionNotFound` if no edges are found which intersect the location of the new point.
     ///
-    /// - `Ok(Rc<RefCell<TMeshControlPoint<P>>>)` if the control point was successfully added, which itself is returned.
+    /// - `Ok(Rc<RefCell<TmeshControlPoint<P>>>)` if the control point was successfully added, which itself is returned.
     ///
     /// # Borrows
     /// Immutably borrows every point in the mesh `self`.
@@ -263,11 +263,11 @@ impl<P> TMesh<P> {
         &mut self,
         p: P,
         knot_coords: (f64, f64),
-    ) -> Result<Rc<RefCell<TMeshControlPoint<P>>>> {
+    ) -> Result<Rc<RefCell<TmeshControlPoint<P>>>> {
         // Make sure desred knot coordinates are within mesh bounds
         if knot_coords.0 < 0.0 || knot_coords.0 > 1.0 || knot_coords.1 < 0.0 || knot_coords.1 > 1.0
         {
-            return Err(Error::TMeshOutOfBoundsInsertion);
+            return Err(Error::TmeshOutOfBoundsInsertion);
         }
 
         // If a point already exists at the desired knot coordinates, return an error. Zero knot intervals can be put
@@ -283,7 +283,7 @@ impl<P> TMesh<P> {
             })
             .is_some()
         {
-            return Err(Error::TMeshExistingControlPoint);
+            return Err(Error::TmeshExistingControlPoint);
         }
 
         // The function checks for any T or S edges that intersect the point in paramtric space where the
@@ -300,7 +300,7 @@ impl<P> TMesh<P> {
             .filter(|point| (point.borrow().get_knot_coordinates().0 - knot_coords.0).so_small())
             // Filter those points to only include the point that stradles the T axis of insertion
             .filter(|point| {
-                if let Some(con) = point.borrow().get(TMeshDirection::UP) {
+                if let Some(con) = point.borrow().get(TmeshDirection::Up) {
                     let temp_t_coord = point.borrow().get_knot_coordinates().1;
                     let temp_inter = con.1;
 
@@ -315,7 +315,7 @@ impl<P> TMesh<P> {
                 false
             })
             .map(|point| Rc::clone(point))
-            .collect::<Vec<Rc<RefCell<TMeshControlPoint<P>>>>>();
+            .collect::<Vec<Rc<RefCell<TmeshControlPoint<P>>>>>();
 
         // Depending on the number of points whose connections intersect the location of the new point,
         // different errors or actions are taken
@@ -329,14 +329,14 @@ impl<P> TMesh<P> {
                     .add_control_point(
                         p,
                         Rc::clone(&s_axis_stradle_points[0]),
-                        TMeshDirection::UP,
+                        TmeshDirection::Up,
                         (knot_coords.1 - point_t_coord) / con_knot,
                     )
-                    .map_err(|_| Error::TMeshUnkownError);
+                    .map_err(|_| Error::TmeshUnkownError);
             }
             _ => {
                 // Multiple T-edges are found where the point intersects (Should never happen)
-                return Err(Error::TMeshMalformedMesh);
+                return Err(Error::TmeshMalformedMesh);
             }
         };
 
@@ -349,7 +349,7 @@ impl<P> TMesh<P> {
             .filter(|point| (point.borrow().get_knot_coordinates().1 - knot_coords.1).so_small())
             // Filter those points to only include the point that stradles the S axis of insertion
             .filter(|point| {
-                if let Some(con) = point.borrow().get(TMeshDirection::RIGHT) {
+                if let Some(con) = point.borrow().get(TmeshDirection::Right) {
                     let temp_s_coord = point.borrow().get_knot_coordinates().0;
                     let temp_inter = con.1;
 
@@ -364,14 +364,14 @@ impl<P> TMesh<P> {
                 false
             })
             .map(|point| Rc::clone(point))
-            .collect::<Vec<Rc<RefCell<TMeshControlPoint<P>>>>>();
+            .collect::<Vec<Rc<RefCell<TmeshControlPoint<P>>>>>();
 
         // Depending on the number of points whose connections intersect the location of the new point,
         // different errors or actions are taken
         match t_axis_stradle_points.len() {
             0 => {
                 // No S-edge instersects the point where the point needs to be inserted, return an error
-                return Err(Error::TMeshConnectionNotFound);
+                return Err(Error::TmeshConnectionNotFound);
             }
             1 => {
                 // An S-edge is found where the point intersects
@@ -379,14 +379,14 @@ impl<P> TMesh<P> {
                     .add_control_point(
                         p,
                         Rc::clone(&t_axis_stradle_points[0]),
-                        TMeshDirection::RIGHT,
+                        TmeshDirection::Right,
                         (knot_coords.0 - point_s_coord) / con_knot,
                     )
-                    .map_err(|_| Error::TMeshUnkownError);
+                    .map_err(|_| Error::TmeshUnkownError);
             }
             _ => {
                 // Multiple S-edges are found where the point intersects (Should never happen)
-                return Err(Error::TMeshMalformedMesh);
+                return Err(Error::TmeshMalformedMesh);
             }
         };
     }
@@ -396,9 +396,9 @@ impl<P> TMesh<P> {
     /// be of length 5
     ///
     /// # Returns
-    /// - `TMeshConnectionNotFound` if a T-junction is unexpectedly found (non-rectangular face)
+    /// - `TmeshConnectionNotFound` if a T-junction is unexpectedly found (non-rectangular face)
     ///
-    /// - `TMeshControlPointNotFound` if an edge conditon is unexpectedly found (internal edge condition)
+    /// - `TmeshControlPointNotFound` if an edge conditon is unexpectedly found (internal edge condition)
     ///
     /// - `Ok((KnotVeec, KnotVec))` if knot vectors are successfully generated
     ///
@@ -407,7 +407,7 @@ impl<P> TMesh<P> {
     /// In the case that `p` is not connected to a point in a direction, but instead a T-junction, any points
     /// that are a part of the face which `p` is a part of and the next face in that direction may be borrowed,
     /// with no guarantees as to which or how many.
-    fn get_point_knot_vectors(p: Rc<RefCell<TMeshControlPoint<P>>>) -> Result<(KnotVec, KnotVec)> {
+    fn get_point_knot_vectors(p: Rc<RefCell<TmeshControlPoint<P>>>) -> Result<(KnotVec, KnotVec)> {
         let mut s_vec: Vec<f64> = vec![0.0; 5];
         let mut t_vec: Vec<f64> = vec![0.0; 5];
 
@@ -416,10 +416,10 @@ impl<P> TMesh<P> {
         t_vec[2] = p.borrow().get_knot_coordinates().1;
 
         // Cast rays in all directions
-        for dir in TMeshDirection::iter() {
+        for dir in TmeshDirection::iter() {
             let cur_point = Rc::clone(&p);
             // Knot intervals for intersections (These are deltas, not absolutes)
-            let knot_intervals = TMesh::cast_ray(cur_point, dir, 2)?;
+            let knot_intervals = Tmesh::cast_ray(cur_point, dir, 2)?;
 
             for i in 0..2 {
                 let inter = knot_intervals[i];
@@ -438,16 +438,16 @@ impl<P> TMesh<P> {
                 //            |
                 //            + 0
                 match dir {
-                    TMeshDirection::UP => {
+                    TmeshDirection::Up => {
                         t_vec[3 + i] = t_vec[2 + i] + inter;
                     }
-                    TMeshDirection::RIGHT => {
+                    TmeshDirection::Right => {
                         s_vec[3 + i] = s_vec[2 + i] + inter;
                     }
-                    TMeshDirection::DOWN => {
+                    TmeshDirection::Down => {
                         t_vec[1 - i] = t_vec[2 - i] - inter;
                     }
-                    TMeshDirection::LEFT => {
+                    TmeshDirection::Left => {
                         s_vec[1 - i] = s_vec[2 - i] - inter;
                     }
                 }
@@ -462,9 +462,9 @@ impl<P> TMesh<P> {
     ///
     /// # Returns
     /// All errors returned from the function result from a malformed T-mesh and should not
-    /// - `TMeshConnectionNotFound` if a non-rectangular face is encountered.
+    /// - `TmeshConnectionNotFound` if a non-rectangular face is encountered.
     ///
-    /// - `TMeshControlPointNotFound` if an unexpected edge condition is found.
+    /// - `TmeshControlPointNotFound` if an unexpected edge condition is found.
     ///
     /// - `Ok(())` if knot vectors are successfully generated.
     ///
@@ -474,7 +474,7 @@ impl<P> TMesh<P> {
         let mut knot_vecs: Vec<(KnotVec, KnotVec)> = Vec::new();
 
         for control_point in self.control_points.iter() {
-            knot_vecs.push(TMesh::get_point_knot_vectors(Rc::clone(&control_point))?);
+            knot_vecs.push(Tmesh::get_point_knot_vectors(Rc::clone(&control_point))?);
         }
 
         self.knot_vectors.replace(Some(knot_vecs));
@@ -505,14 +505,14 @@ impl<P> TMesh<P> {
     /// `p`, labeled `[+]`, will be connected to `|+|` after calling `find_inferred_connection`
     ///
     /// # Returns
-    /// - `TMeshConnectionNotFound` if any connection that is expected to
+    /// - `TmeshConnectionNotFound` if any connection that is expected to
     ///     exist does not. This should only happen on a malformed T-mesh.
     ///
-    /// - `TMeshControlPointNotFound` if any control point that is expected
+    /// - `TmeshControlPointNotFound` if any control point that is expected
     ///     to exist does not. This usually happens because the current face does not exist
     ///     (`p` is an edge condition).
     ///
-    /// - `TMeshExistingConnection` if a connection exists in the `face_dir` direction
+    /// - `TmeshExistingConnection` if a connection exists in the `face_dir` direction
     ///     (`p` is a corner).
     ///
     /// - `Ok(true)` if an inferred connection was found and connected.
@@ -535,8 +535,8 @@ impl<P> TMesh<P> {
     /// regarding implicit connections (Cross-face connections).
     fn find_inferred_connection(
         &mut self,
-        p: Rc<RefCell<TMeshControlPoint<P>>>,
-        face_dir: TMeshDirection,
+        p: Rc<RefCell<TmeshControlPoint<P>>>,
+        face_dir: TmeshDirection,
     ) -> Result<bool> {
         let mut cur_point = Rc::clone(&p);
         let mut cur_dir = face_dir.clockwise();
@@ -544,8 +544,8 @@ impl<P> TMesh<P> {
         let mut ic_knot_interval = 0.0; // The interval of the ic
 
         // Check that p is not a corner
-        if p.borrow().con_type(face_dir) == TMeshConnectionType::Point {
-            return Err(Error::TMeshExistingConnection);
+        if p.borrow().con_type(face_dir) == TmeshConnectionType::Point {
+            return Err(Error::TmeshExistingConnection);
         }
 
         // Traverse in the direction cur_dir until an anti-clockwise connection is found.
@@ -578,7 +578,7 @@ impl<P> TMesh<P> {
             ic_knot_accumulation += cur_point
                 .borrow()
                 .get_con_knot(cur_dir)
-                .ok_or(Error::TMeshConnectionNotFound)?;
+                .ok_or(Error::TmeshConnectionNotFound)?;
 
             cur_point = {
                 let borrow = cur_point.borrow();
@@ -587,7 +587,7 @@ impl<P> TMesh<P> {
 
             // Ic found
             if (ic_knot_measurment - ic_knot_accumulation).so_small() {
-                let connection_res = TMeshControlPoint::connect(
+                let connection_res = TmeshControlPoint::connect(
                     Rc::clone(&p),
                     Rc::clone(&cur_point),
                     cur_dir.clockwise(),
@@ -599,7 +599,7 @@ impl<P> TMesh<P> {
                 // Any other error should be sent up and if the connection is successful the same thing should happen.
                 match connection_res {
                     Ok(()) => return Ok(true),
-                    Err(Error::TMeshExistingConnection) => {}
+                    Err(Error::TmeshExistingConnection) => {}
                     Err(e) => return Err(e),
                 };
 
@@ -608,7 +608,7 @@ impl<P> TMesh<P> {
             // (needs testing)
             } else if ic_knot_accumulation > ic_knot_measurment
                 || cur_point.borrow().con_type(cur_dir.anti_clockwise())
-                    == TMeshConnectionType::Point
+                    == TmeshConnectionType::Point
             {
                 return Ok(false);
             }
@@ -621,9 +621,9 @@ impl<P> TMesh<P> {
     /// All vectors returned from this function will have a length `num`.
     ///
     /// # Returns
-    /// - `TMeshConnectionNotFound` if a T-mesh is found on the edge of a face, making it non-rectangular (malformed mesh).
+    /// - `TmeshConnectionNotFound` if a T-mesh is found on the edge of a face, making it non-rectangular (malformed mesh).
     ///
-    /// - `TMeshControlPointNotFound` if an edge condition is found inside the mesh or
+    /// - `TmeshControlPointNotFound` if an edge condition is found inside the mesh or
     ///     if edge condition points are not connected to each other (malformed mesh).
     ///
     /// - `Ok(vec<f64>)` if the ray was successfully cast, returns the knot intervals traversed.
@@ -632,8 +632,8 @@ impl<P> TMesh<P> {
     /// Immutably borrows `p` and any points connected to `p` in the direction `dir`, including points which go around any
     /// faces created by T-juctions in the direction `dir`, for `num` perpandicular intersections.
     pub fn cast_ray(
-        p: Rc<RefCell<TMeshControlPoint<P>>>,
-        dir: TMeshDirection,
+        p: Rc<RefCell<TmeshControlPoint<P>>>,
+        dir: TmeshDirection,
         num: usize,
     ) -> Result<Vec<f64>> {
         let mut knot_intervals = Vec::with_capacity(num);
@@ -653,13 +653,13 @@ impl<P> TMesh<P> {
             match con_type {
                 // If dir is a T-junction, navigate around the face to the other side,
                 // counting the knot intervals in the direction dir
-                TMeshConnectionType::Tjunction => {
+                TmeshConnectionType::Tjunction => {
                     // Stores the distance traversed away from the ray
                     let mut ray_distance: f64;
                     (cur_point, ray_distance) = {
                         let borrow = cur_point.borrow();
 
-                        // The possibility that TMeshControlPointNotFound is returned from navigate_until_con would normaly be no
+                        // The possibility that TmeshControlPointNotFound is returned from navigate_until_con would normaly be no
                         // cuase for error, since the other direction may be tried. However, because cur_point is a T junction in
                         // the direction dir, it must be a point connection in dir.anti_clockwise(), otherwise the mesh is malformed.
                         borrow.navigate_until_con(dir.anti_clockwise(), dir)?
@@ -725,7 +725,7 @@ impl<P> TMesh<P> {
                         // edge condition. This is not actually an error, so it needs to be checked before traversal. In the event that this occurs,
                         // normal ray casting is resumed, since all edge conditions in a mesh have the same weight. Do not push another knot interval,
                         // because the edge arm of the parent match statement will take care of it
-                        if cur_point.borrow().con_type(dir) == TMeshConnectionType::Edge {
+                        if cur_point.borrow().con_type(dir) == TmeshConnectionType::Edge {
                             break 'face_traversal;
                         }
 
@@ -761,7 +761,7 @@ impl<P> TMesh<P> {
 
                         // It is possble that the above loop exited without modifying cur_point, as is the case for the face marked by
                         // the fourth and fifth intersections above. In this case, cur_point must be navigated up to the corner of the face.
-                        if cur_point.borrow().con_type(dir) == TMeshConnectionType::Tjunction {
+                        if cur_point.borrow().con_type(dir) == TmeshConnectionType::Tjunction {
                             let traversal_result = cur_point
                                 .borrow()
                                 .navigate_until_con(dir.anti_clockwise(), dir)?;
@@ -784,7 +784,7 @@ impl<P> TMesh<P> {
                     }
                 }
 
-                TMeshConnectionType::Point => {
+                TmeshConnectionType::Point => {
                     // Store knot interval
                     knot_intervals[i] += cur_point.borrow().get_con_knot(dir).expect(
                         "All point connections and edge conditions must have a knot interval",
@@ -797,7 +797,7 @@ impl<P> TMesh<P> {
                     };
                 }
 
-                TMeshConnectionType::Edge => {
+                TmeshConnectionType::Edge => {
                     // Edge contition already found, and pushing a zero happens before the match statement, so just continue.
                     if edge_condition_found {
                         continue;
@@ -817,46 +817,46 @@ impl<P> TMesh<P> {
     }
 }
 
-impl<P> TMesh<P>
+impl<P> Tmesh<P>
 where
     P: PartialEq,
 {
     /// Finds the first point that was added to a T-mesh with a specific cartesian coordinate
     ///
     /// # Returns
-    /// - `TMeshControlPointNotFound` if `p` is not found.
+    /// - `TmeshControlPointNotFound` if `p` is not found.
     ///
-    /// - `Ok(Rc<RefCell<TMeshControlPoint<P>>>)` if the corresponding control point is found.
+    /// - `Ok(Rc<RefCell<TmeshControlPoint<P>>>)` if the corresponding control point is found.
     ///
     /// # Borrows
     /// Immutably borrows every control point in the `self.control_points`.
-    pub fn find(&self, p: P) -> Result<Rc<RefCell<TMeshControlPoint<P>>>> {
+    pub fn find(&self, p: P) -> Result<Rc<RefCell<TmeshControlPoint<P>>>> {
         Ok(Rc::clone(
             self.control_points()
                 .iter()
                 .find(|x| *x.borrow().point() == p)
-                .ok_or(Error::TMeshControlPointNotFound)?,
+                .ok_or(Error::TmeshControlPointNotFound)?,
         ))
     }
 
     /// Finds a control point with cartesian coordinates `point` and changes them to `new`.
     ///
     /// # Returns
-    /// - `TMeshControlPointNotFound` if `point` is not found.
+    /// - `TmeshControlPointNotFound` if `point` is not found.
     ///
-    /// - `Ok(Rc<RefCell<TMeshControlPoint<P>>>)` if the corresponding control point is found.
+    /// - `Ok(Rc<RefCell<TmeshControlPoint<P>>>)` if the corresponding control point is found.
     ///
     /// # Borrows
     /// Immutably borrows every point in `self.control_points` and mutably borrows the
     /// control point corresponding to `point` if it is found.
-    pub fn map_point(&mut self, point: P, new: P) -> Result<Rc<RefCell<TMeshControlPoint<P>>>> {
+    pub fn map_point(&mut self, point: P, new: P) -> Result<Rc<RefCell<TmeshControlPoint<P>>>> {
         let point = self.find(point)?;
         point.borrow_mut().set_point(new);
         Ok(point)
     }
 }
 
-impl<P> TMesh<P>
+impl<P> Tmesh<P>
 where
     P: ControlPoint<f64>,
 {
@@ -894,24 +894,24 @@ where
     /// which will be automatically added.
     ///
     /// # Returns
-    /// - `TMeshControlPointNotFound` if an edge condition is encountered instead of a control point
+    /// - `TmeshControlPointNotFound` if an edge condition is encountered instead of a control point
     ///     along the axis of insertion (Rule 3 \[Sederberg et al. 2003\]).
     ///
-    /// - `TMeshConnectionNotFound` if a T-junction is encountered instead of a control point
+    /// - `TmeshConnectionNotFound` if a T-junction is encountered instead of a control point
     ///     along the axis of insertion (Rule 3 \[Sederberg et al. 2003\]).
     ///
-    /// - `TMeshInvalidKnotRatio` if `knot_ratio` is not in [0.0, 1.0].
+    /// - `TmeshInvalidKnotRatio` if `knot_ratio` is not in [0.0, 1.0].
     ///
-    /// - `TMeshMalformedMesh` if a knot vector was unable to be constructed for any point.
+    /// - `TmeshMalformedMesh` if a knot vector was unable to be constructed for any point.
     ///
-    /// - `TMeshKnotVectorsNotEqual` if the knot vectors perpandicular to `dir` are not all equal (Rule 3 \[Sederberg et al. 2003\]).
+    /// - `TmeshKnotVectorsNotEqual` if the knot vectors perpandicular to `dir` are not all equal (Rule 3 \[Sederberg et al. 2003\]).
     ///
-    /// - `TMeshForeignControlPoint` if `p` is not a control point in the T-mesh.
+    /// - `TmeshForeignControlPoint` if `p` is not a control point in the T-mesh.
     ///
-    /// - `TMeshConnectionInvalidKnotInterval` if the connection between `p` and the point in the direction `dir` does
+    /// - `TmeshConnectionInvalidKnotInterval` if the connection between `p` and the point in the direction `dir` does
     ///     not have the same knot interval in both directions.
     ///
-    /// - `Ok(Rc<RefCell<TMeshControlPoint<P>>>)` if the control point was successfully added, where the
+    /// - `Ok(Rc<RefCell<TmeshControlPoint<P>>>)` if the control point was successfully added, where the
     ///     returned control point is the newly added control point
     ///
     /// # Borrows
@@ -926,18 +926,18 @@ where
     /// revealed that local knot insertion cannot be done on edges connected to a point with one or more edge conditionds.
     pub fn try_local_knot_insertion(
         &mut self,
-        p: Rc<RefCell<TMeshControlPoint<P>>>,
-        dir: TMeshDirection,
+        p: Rc<RefCell<TmeshControlPoint<P>>>,
+        dir: TmeshDirection,
         knot_ratio: f64,
-    ) -> Result<Rc<RefCell<TMeshControlPoint<P>>>> {
+    ) -> Result<Rc<RefCell<TmeshControlPoint<P>>>> {
         match p.borrow().con_type(dir) {
-            TMeshConnectionType::Edge => return Err(Error::TMeshControlPointNotFound),
-            TMeshConnectionType::Tjunction => return Err(Error::TMeshConnectionNotFound),
+            TmeshConnectionType::Edge => return Err(Error::TmeshControlPointNotFound),
+            TmeshConnectionType::Tjunction => return Err(Error::TmeshConnectionNotFound),
             _ => {}
         };
 
         if knot_ratio < 0.0 || knot_ratio > 1.0 {
-            return Err(Error::TMeshInvalidKnotRatio);
+            return Err(Error::TmeshInvalidKnotRatio);
         }
 
         // Rule 3 of T-splines, [Sederberg et al. 2003], states that all (The paper does not specify existing or otherwise,
@@ -945,7 +945,7 @@ where
         // a T-junction) perpandicular and in-line knot vectors of length 5 centered on the axis
         // of insertion and a distance of at most two knots from the point to be inserted must be equal. See Figure 10 in
         // [Sederberg et al. 2003] for details.
-        let mut center_points: Vec<Rc<RefCell<TMeshControlPoint<P>>>> = Vec::with_capacity(4);
+        let mut center_points: Vec<Rc<RefCell<TmeshControlPoint<P>>>> = Vec::with_capacity(4);
 
         // An example insertion for reference
         //
@@ -957,10 +957,10 @@ where
         center_points.push({
             match p.borrow().con_type(dir.flip()) {
                 // Retrieve connected point
-                TMeshConnectionType::Point => Rc::clone(&p.borrow().get_conected_point(dir.flip())),
-                TMeshConnectionType::Edge => return Err(Error::TMeshControlPointNotFound),
-                TMeshConnectionType::Tjunction => {
-                    return Err(Error::TMeshConnectionNotFound);
+                TmeshConnectionType::Point => Rc::clone(&p.borrow().get_conected_point(dir.flip())),
+                TmeshConnectionType::Edge => return Err(Error::TmeshControlPointNotFound),
+                TmeshConnectionType::Tjunction => {
+                    return Err(Error::TmeshConnectionNotFound);
                 }
             }
         });
@@ -975,17 +975,17 @@ where
 
             match borrow.con_type(dir.flip()).clone() {
                 // Retrieve connected point
-                TMeshConnectionType::Point => Rc::clone(&borrow.get_conected_point(dir)),
-                TMeshConnectionType::Edge => return Err(Error::TMeshControlPointNotFound),
-                TMeshConnectionType::Tjunction => {
-                    return Err(Error::TMeshConnectionNotFound);
+                TmeshConnectionType::Point => Rc::clone(&borrow.get_conected_point(dir)),
+                TmeshConnectionType::Edge => return Err(Error::TmeshControlPointNotFound),
+                TmeshConnectionType::Tjunction => {
+                    return Err(Error::TmeshConnectionNotFound);
                 }
             }
         });
 
         // Store the first knot vector to compare it to the rest. If any do not match, return an error
         let knot_vec_compare: KnotVec = {
-            let point_knots = TMesh::get_point_knot_vectors(Rc::clone(&center_points[1]))?;
+            let point_knots = Tmesh::get_point_knot_vectors(Rc::clone(&center_points[1]))?;
 
             // Depending on the direction of insertion, the S or T knot vectors are needed.
             if dir.horizontal() {
@@ -997,8 +997,8 @@ where
         // Compare knot vectors
         for point in center_points[1..].iter() {
             // Get knot vectors in both directions for the point
-            let point_knots = TMesh::get_point_knot_vectors(Rc::clone(point))
-                .map_err(|_| Error::TMeshMalformedMesh)?;
+            let point_knots = Tmesh::get_point_knot_vectors(Rc::clone(point))
+                .map_err(|_| Error::TmeshMalformedMesh)?;
 
             // Depending on the direction of insertion, the S or T knot vectors are needed.
             let cur_kv = if dir.horizontal() {
@@ -1014,7 +1014,7 @@ where
                 .zip(knot_vec_compare.iter())
                 .all(|t| (t.0 - t.1).so_small())
             {
-                return Err(Error::TMeshKnotVectorsNotEqual);
+                return Err(Error::TmeshKnotVectorsNotEqual);
             }
         }
 
@@ -1023,8 +1023,8 @@ where
         // d1 and d2
         for point in center_points[0..2].iter() {
             d.push(
-                TMesh::cast_ray(Rc::clone(point), dir.flip(), 1)
-                    .map_err(|_| Error::TMeshMalformedMesh)?[0],
+                Tmesh::cast_ray(Rc::clone(point), dir.flip(), 1)
+                    .map_err(|_| Error::TmeshMalformedMesh)?[0],
             );
         }
         // d3
@@ -1032,7 +1032,7 @@ where
             center_points[1]
                 .borrow()
                 .get_con_knot(dir)
-                .ok_or(Error::TMeshConnectionNotFound)?
+                .ok_or(Error::TmeshConnectionNotFound)?
                 * knot_ratio,
         );
         // d4
@@ -1040,7 +1040,7 @@ where
         // d5 and d6
         for point in center_points[2..4].iter() {
             d.push(
-                TMesh::cast_ray(Rc::clone(point), dir, 1).map_err(|_| Error::TMeshMalformedMesh)?
+                Tmesh::cast_ray(Rc::clone(point), dir, 1).map_err(|_| Error::TmeshMalformedMesh)?
                     [0],
             );
         }
@@ -1073,18 +1073,18 @@ where
 
     /// Absolute knot coordinate interface for local knot insertion (LKI). Tries to insert a control point
     /// at the specified absolute knot coordinates `knot_coords` without changing the shape of the resulting surface.h
-    /// For details on LKI, see [`TMesh::try_local_knot_insertion()`]. In order for the function to succeed, an edge must
+    /// For details on LKI, see [`Tmesh::try_local_knot_insertion()`]. In order for the function to succeed, an edge must
     /// exist which passes through the knot coordinates `knot_coords`, that is, eithr two virtical points or horrizontal
     /// points stradle the parametric coordinates where the new point is to be inserted.
     ///
     /// # Returns
-    /// - `TMeshOutOfBoundsInsertion` if either component of `knot_coords` is not in the range `(0.0, 1.0)`.
+    /// - `TmeshOutOfBoundsInsertion` if either component of `knot_coords` is not in the range `(0.0, 1.0)`.
     ///
-    /// - `TMeshExistingControlPoint` if a control point already exists at the parametric coordinates `knot_coords`.
+    /// - `TmeshExistingControlPoint` if a control point already exists at the parametric coordinates `knot_coords`.
     ///
-    /// - `TMeshMalformedMesh` if intersecting edges are found.
+    /// - `TmeshMalformedMesh` if intersecting edges are found.
     ///
-    /// - `TMeshConnectionNotFound` if no edges are found intersecting the knot coordinates `knot_coords`.
+    /// - `TmeshConnectionNotFound` if no edges are found intersecting the knot coordinates `knot_coords`.
     ///
     /// # Borrows
     /// Immutably borrows every control point in `self`, immutably borrows two points in the direction `dir` of `p`
@@ -1095,11 +1095,11 @@ where
     pub fn try_absolute_local_knot_insertion(
         &mut self,
         knot_coords: (f64, f64),
-    ) -> Result<Rc<RefCell<TMeshControlPoint<P>>>> {
+    ) -> Result<Rc<RefCell<TmeshControlPoint<P>>>> {
         // Make sure desred knot coordinates are within msh bounds
         if knot_coords.0 < 0.0 || knot_coords.0 > 1.0 || knot_coords.1 < 0.0 || knot_coords.1 > 1.0
         {
-            return Err(Error::TMeshOutOfBoundsInsertion);
+            return Err(Error::TmeshOutOfBoundsInsertion);
         }
 
         // If a point already exists at the desired knot coordinates, return an error. Zero knot intervals can be put
@@ -1115,7 +1115,7 @@ where
             })
             .is_some()
         {
-            return Err(Error::TMeshExistingControlPoint);
+            return Err(Error::TmeshExistingControlPoint);
         }
 
         // The function checks for any T or S edges that intersect the point in paramtric space where the
@@ -1132,7 +1132,7 @@ where
             .filter(|point| (point.borrow().get_knot_coordinates().0 - knot_coords.0).so_small())
             // Filter those points to only include the point that stradles the T axis of insertion
             .filter(|point| {
-                if let Some(con) = point.borrow().get(TMeshDirection::UP) {
+                if let Some(con) = point.borrow().get(TmeshDirection::Up) {
                     let temp_t_coord = point.borrow().get_knot_coordinates().1;
                     let temp_inter = con.1;
 
@@ -1147,7 +1147,7 @@ where
                 false
             })
             .map(|point| Rc::clone(point))
-            .collect::<Vec<Rc<RefCell<TMeshControlPoint<P>>>>>();
+            .collect::<Vec<Rc<RefCell<TmeshControlPoint<P>>>>>();
 
         // Depending on the number of points whose connections intersect the location of the new point,
         // different errors or actions are taken
@@ -1159,13 +1159,13 @@ where
                 // A T-edge is found where the point intersects
                 return self.try_local_knot_insertion(
                     Rc::clone(&s_axis_stradle_points[0]),
-                    TMeshDirection::UP,
+                    TmeshDirection::Up,
                     (knot_coords.1 - point_t_coord) / con_knot,
                 );
             }
             _ => {
                 // Multiple T-edges are found where the point intersects (Should never happen)
-                return Err(Error::TMeshMalformedMesh);
+                return Err(Error::TmeshMalformedMesh);
             }
         };
 
@@ -1178,7 +1178,7 @@ where
             .filter(|point| (point.borrow().get_knot_coordinates().1 - knot_coords.1).so_small())
             // Filter those points to only include the point that stradles the S axis of insertion
             .filter(|point| {
-                if let Some(con) = point.borrow().get(TMeshDirection::RIGHT) {
+                if let Some(con) = point.borrow().get(TmeshDirection::Right) {
                     let temp_s_coord = point.borrow().get_knot_coordinates().0;
                     let temp_inter = con.1;
 
@@ -1193,31 +1193,31 @@ where
                 false
             })
             .map(|point| Rc::clone(point))
-            .collect::<Vec<Rc<RefCell<TMeshControlPoint<P>>>>>();
+            .collect::<Vec<Rc<RefCell<TmeshControlPoint<P>>>>>();
 
         // Depending on the number of points whose connections intersect the location of the new point,
         // different errors or actions are taken
         match t_axis_stradle_points.len() {
             0 => {
                 // No S-edge instersects the point where the point needs to be inserted, return an error
-                return Err(Error::TMeshConnectionNotFound);
+                return Err(Error::TmeshConnectionNotFound);
             }
             1 => {
                 // An S-edge is found where the point intersects
                 return self.try_local_knot_insertion(
                     Rc::clone(&t_axis_stradle_points[0]),
-                    TMeshDirection::RIGHT,
+                    TmeshDirection::Right,
                     (knot_coords.0 - point_s_coord) / con_knot,
                 );
             }
             _ => {
                 // Multiple S-edges are found where the point intersects (Should never happen)
-                return Err(Error::TMeshMalformedMesh);
+                return Err(Error::TmeshMalformedMesh);
             }
         };
     }
 
-    fn try_bezier_domains(&self) -> Result<TMesh<P>> {
+    fn try_bezier_domains(&self) -> Result<Tmesh<P>> {
         let mut mesh = self.clone();
 
         // Bezier domains are constructed by direction, not by point. The alternative can lead to situations
@@ -1226,19 +1226,19 @@ where
         // knot insertion fails at multiple positions.
 
         for dir in [
-            TMeshDirection::UP,
-            TMeshDirection::DOWN,
-            TMeshDirection::RIGHT,
-            TMeshDirection::LEFT,
+            TmeshDirection::Up,
+            TmeshDirection::Down,
+            TmeshDirection::Right,
+            TmeshDirection::Left,
         ] {
             // New T-junctions are created when bezier domains are created, so use self's control points while modifying mesh's.
             // Indecies stay the same, since new control points are pushed onto the cotnrol_points vector in mesh
             for (index, original_mesh_cont_p) in self.control_points.iter().enumerate() {
-                if original_mesh_cont_p.borrow().con_type(dir) == TMeshConnectionType::Tjunction {
+                if original_mesh_cont_p.borrow().con_type(dir) == TmeshConnectionType::Tjunction {
                     let coresponding_point = Rc::clone(&mesh.control_points[index]);
                     let mut knot_intervals =
-                        TMesh::cast_ray(Rc::clone(&coresponding_point), dir, 2)
-                            .map_err(|_| Error::TMeshMalformedMesh)?;
+                        Tmesh::cast_ray(Rc::clone(&coresponding_point), dir, 2)
+                            .map_err(|_| Error::TmeshMalformedMesh)?;
 
                     // Convert relative deltas in knot_invervals into absolute deltas (point to point distances to absolute distances)
                     knot_intervals[1] += knot_intervals[0];
@@ -1264,9 +1264,9 @@ where
     /// guaranteed, and should be accessed at your own risk.
     ///
     /// # Returns
-    /// - `TMeshConnectionNotFound` if `self` contains a non-rectangular grid, in which case generating knot vectors will fail.
+    /// - `TmeshConnectionNotFound` if `self` contains a non-rectangular grid, in which case generating knot vectors will fail.
     ///
-    /// - `TMeshControlPointNotFound` if `self` contains an edge condition inside of its mesh.
+    /// - `TmeshControlPointNotFound` if `self` contains an edge condition inside of its mesh.
     ///
     /// - `Ok(P)` if the calculation succeeded. A `P` will be returned which is the T-mesh transformation
     ///     of `(s, t)` into cartesian space.
@@ -1377,11 +1377,11 @@ where
     }
 }
 
-impl<P> fmt::Display for TMesh<P> {
+impl<P> fmt::Display for Tmesh<P> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // If only Hash Maps could use f64....
-        let mut s_levels: Vec<(f64, Vec<Rc<RefCell<TMeshControlPoint<P>>>>)> = Vec::new();
-        let mut t_levels: Vec<(f64, Vec<Rc<RefCell<TMeshControlPoint<P>>>>)> = Vec::new();
+        let mut s_levels: Vec<(f64, Vec<Rc<RefCell<TmeshControlPoint<P>>>>)> = Vec::new();
+        let mut t_levels: Vec<(f64, Vec<Rc<RefCell<TmeshControlPoint<P>>>>)> = Vec::new();
 
         let sort_f64 = |a: &f64, b: &f64| -> std::cmp::Ordering {
             if (a - b).so_small() {
@@ -1399,7 +1399,7 @@ impl<P> fmt::Display for TMesh<P> {
                 .iter_mut()
                 .find(|c| sort_f64(&c.0, &coords.0) == std::cmp::Ordering::Equal)
             {
-                let point_vec: &mut Vec<Rc<RefCell<TMeshControlPoint<P>>>> = s_level.1.as_mut();
+                let point_vec: &mut Vec<Rc<RefCell<TmeshControlPoint<P>>>> = s_level.1.as_mut();
                 point_vec.push(Rc::clone(point));
             } else {
                 s_levels.push((coords.0, Vec::new()));
@@ -1414,7 +1414,7 @@ impl<P> fmt::Display for TMesh<P> {
                 .iter_mut()
                 .find(|c| sort_f64(&c.0, &coords.1) == std::cmp::Ordering::Equal)
             {
-                let point_vec: &mut Vec<Rc<RefCell<TMeshControlPoint<P>>>> = t_level.1.as_mut();
+                let point_vec: &mut Vec<Rc<RefCell<TmeshControlPoint<P>>>> = t_level.1.as_mut();
                 point_vec.push(Rc::clone(point));
             } else {
                 t_levels.push((coords.1, Vec::new()));
@@ -1439,7 +1439,7 @@ impl<P> fmt::Display for TMesh<P> {
                 .find(|p| p.borrow().get_knot_coordinates().0 == *s_level)
             {
                 virtical_cons[i] =
-                    point.borrow().con_type(TMeshDirection::UP) != TMeshConnectionType::Tjunction;
+                    point.borrow().con_type(TmeshDirection::Up) != TmeshConnectionType::Tjunction;
             }
         }
         write!(f, "       ")?;
@@ -1465,21 +1465,21 @@ impl<P> fmt::Display for TMesh<P> {
                     .iter()
                     .find(|p| p.borrow().get_knot_coordinates().0 == *s_level)
                 {
-                    if point.borrow().con_type(TMeshDirection::LEFT) == TMeshConnectionType::Edge {
+                    if point.borrow().con_type(TmeshDirection::Left) == TmeshConnectionType::Edge {
                         line.push_str("--");
                         has_left_edge = true;
                     }
 
                     line.push('+');
-                    virtical_cons[i] = point.borrow().con_type(TMeshDirection::DOWN)
-                        != TMeshConnectionType::Tjunction;
-                    line.push_str(match point.borrow().con_type(TMeshDirection::RIGHT) {
-                        TMeshConnectionType::Edge => "--",
-                        TMeshConnectionType::Point => {
+                    virtical_cons[i] = point.borrow().con_type(TmeshDirection::Down)
+                        != TmeshConnectionType::Tjunction;
+                    line.push_str(match point.borrow().con_type(TmeshDirection::Right) {
+                        TmeshConnectionType::Edge => "--",
+                        TmeshConnectionType::Point => {
                             has_right_edge = true;
                             "---"
                         }
-                        TMeshConnectionType::Tjunction => {
+                        TmeshConnectionType::Tjunction => {
                             has_right_edge = false;
                             "   "
                         }
@@ -1546,7 +1546,7 @@ impl<P> fmt::Display for TMesh<P> {
     }
 }
 
-impl<P> TMesh<P>
+impl<P> Tmesh<P>
 where
     P: Clone,
 {
@@ -1558,7 +1558,7 @@ where
     /// left or bottom control point in a pair, depending on the edge being subdivided.
     /// 
     /// # Returns
-    /// - `TMeshConnectionInvalidKnotInterval` if a connection is found which has mismatched knot intervals 
+    /// - `TmeshConnectionInvalidKnotInterval` if a connection is found which has mismatched knot intervals 
     ///     depending on which point in the connection is referenced.
     ///
     /// - `Ok()` if the mesh was successfully subdivided.
@@ -1573,7 +1573,7 @@ where
         let righties: Vec<_> = self
             .control_points()
             .iter()
-            .filter(|p| p.borrow().con_type(TMeshDirection::RIGHT) == TMeshConnectionType::Point)
+            .filter(|p| p.borrow().con_type(TmeshDirection::Right) == TmeshConnectionType::Point)
             .map(|p| Rc::clone(p))
             .collect();
 
@@ -1584,13 +1584,13 @@ where
                 cont_p.borrow().point().clone(),
                 cont_p
                     .borrow()
-                    .get_conected_point(TMeshDirection::RIGHT)
+                    .get_conected_point(TmeshDirection::Right)
                     .borrow()
                     .point()
                     .clone(),
             );
 
-            self.add_control_point(p, Rc::clone(&cont_p), TMeshDirection::RIGHT, 0.5)?;
+            self.add_control_point(p, Rc::clone(&cont_p), TmeshDirection::Right, 0.5)?;
         }
 
         // The above for loop will create new connections in the DOWN direction through implicit connections.
@@ -1598,7 +1598,7 @@ where
         let uppies: Vec<_> = self
             .control_points()
             .iter()
-            .filter(|p| p.borrow().con_type(TMeshDirection::UP) == TMeshConnectionType::Point)
+            .filter(|p| p.borrow().con_type(TmeshDirection::Up) == TmeshConnectionType::Point)
             .map(|p| Rc::clone(p))
             .collect();
 
@@ -1607,24 +1607,24 @@ where
                 cont_p.borrow().point().clone(),
                 cont_p
                     .borrow()
-                    .get_conected_point(TMeshDirection::UP)
+                    .get_conected_point(TmeshDirection::Up)
                     .borrow()
                     .point()
                     .clone(),
             );
 
-            self.add_control_point(p, Rc::clone(&cont_p), TMeshDirection::UP, 0.5)?;
+            self.add_control_point(p, Rc::clone(&cont_p), TmeshDirection::Up, 0.5)?;
         }
 
         Ok(())
     }
 }
 
-impl<P> Clone for TMesh<P>
+impl<P> Clone for Tmesh<P>
 where
     P: Clone,
 {
-    fn clone(&self) -> TMesh<P> {
+    fn clone(&self) -> Tmesh<P> {
         // Vector containing new point objects which have the same positions as the points in the original mesh
         let mut points_copy = Vec::new();
         // Vector containing the connections for each point with the corresponding index in points_copy.
@@ -1644,7 +1644,7 @@ where
             // Push a new control point corresponding to the control point in self.control_points to points_copy
             // The edge interval is 1.0, however, this can be any value, since establishing connections will
             // overwrite this with the correct value.
-            points_copy.push(Rc::new(RefCell::new(TMeshControlPoint::new(
+            points_copy.push(Rc::new(RefCell::new(TmeshControlPoint::new(
                 cart_point, 1.0,
             ))));
 
@@ -1655,13 +1655,13 @@ where
                 .last_mut()
                 .expect("Previously pushed item");
 
-            // TMeshDirection::iter() produces the same order of directions every time, so all connection
+            // TmeshDirection::iter() produces the same order of directions every time, so all connection
             // sub-vectors in point_connections will be ordered in the same way, and will be read the same
             // way during connection establishment.
-            for dir in TMeshDirection::iter() {
+            for dir in TmeshDirection::iter() {
                 match point.borrow().con_type(dir) {
                     // Some((None, f64))
-                    TMeshConnectionType::Edge => last.push(Some((
+                    TmeshConnectionType::Edge => last.push(Some((
                         None,
                         point
                             .borrow()
@@ -1669,7 +1669,7 @@ where
                             .expect("Edge connection types must have a knot interval."),
                     ))),
                     // Some((Some(Index), f64))
-                    TMeshConnectionType::Point => {
+                    TmeshConnectionType::Point => {
                         let connected_point = point.borrow().get_conected_point(dir);
 
                         last.push(Some(
@@ -1681,7 +1681,7 @@ where
                     ))
                     }
                     // None
-                    TMeshConnectionType::Tjunction => {
+                    TmeshConnectionType::Tjunction => {
                         last.push(None);
                     }
                 };
@@ -1692,7 +1692,7 @@ where
         'points_loop: for (point_index, connections) in point_connections.iter().enumerate() {
             // Zip direction with corresponding connections to index the direction for modification
             'connections_loop: for (connection, dir) in
-                connections.iter().zip(TMeshDirection::iter())
+                connections.iter().zip(TmeshDirection::iter())
             {
                 if let Some(con) = connection {
                     // Point connection
@@ -1700,7 +1700,7 @@ where
                         // Connections has already been established. Connect will also add the connection to points_copy[con_index],
                         // so when points_copy[con_index] is reached by 'points_loop, the connection will already exist, so we skip it.
                         if points_copy[point_index].borrow().con_type(dir)
-                            == TMeshConnectionType::Point
+                            == TmeshConnectionType::Point
                         {
                             continue 'connections_loop;
                         }
@@ -1718,7 +1718,7 @@ where
                         }
 
                         // Connect points to each other
-                        TMeshControlPoint::connect(
+                        TmeshControlPoint::connect(
                             Rc::clone(&points_copy[point_index]),
                             Rc::clone(&points_copy[con_index]),
                             dir,
@@ -1751,26 +1751,26 @@ where
             points_copy[i].borrow_mut().knot_coordinates = p.borrow().get_knot_coordinates();
         }
 
-        TMesh {
+        Tmesh {
             control_points: points_copy,
             knot_vectors: RefCell::new(None),
         }
     }
 }
 
-impl<T> Drop for TMesh<T> {
+impl<T> Drop for Tmesh<T> {
     fn drop(&mut self) {
         // Destroy all connections in the mesh so that the only remaining reference to all the points is in
         // self.control_points to prevent leaks
         for p in self.control_points.iter() {
-            for dir in TMeshDirection::iter() {
+            for dir in TmeshDirection::iter() {
                 let _ = p.borrow_mut().remove_connection(dir);
             }
         }
     }
 }
 
-impl<T> TMesh<T>
+impl<T> Tmesh<T>
 where
     T: Debug + Clone,
 {
@@ -1784,7 +1784,7 @@ where
                 let borrow = point.borrow();
                 (*borrow.point()).clone()
             };
-            let knot_vectors = TMesh::get_point_knot_vectors(Rc::clone(point))
+            let knot_vectors = Tmesh::get_point_knot_vectors(Rc::clone(point))
                 .expect("Mesh should not be malformd");
             println!("{:?}", cart);
             println!("\tS: {:?}", knot_vectors.0);
@@ -1805,15 +1805,15 @@ mod tests {
     /// - `(0, ERROR)` when `point`'s connection is invalid.
     /// - `(1, ERROR)` when `other`'s connection is invalid.
     ///
-    /// - `(#, TMeshConnectionNotFound)` when the connection is a T-mesh.
-    /// - `(#, TMeshControlPointNotFound)` when the connection is an edge condition.
-    /// - `(#, TMeshExistingConnection)` when the connection does not lead to the correct point.
+    /// - `(#, TmeshConnectionNotFound)` when the connection is a T-mesh.
+    /// - `(#, TmeshControlPointNotFound)` when the connection is an edge condition.
+    /// - `(#, TmeshExistingConnection)` when the connection does not lead to the correct point.
     ///
     /// - `Ok(())` if the connection is correctly configured.
     fn test_points_are_connected<P: PartialEq>(
-        point: Rc<RefCell<TMeshControlPoint<P>>>,
-        other: Rc<RefCell<TMeshControlPoint<P>>>,
-        dir: TMeshDirection,
+        point: Rc<RefCell<TmeshControlPoint<P>>>,
+        other: Rc<RefCell<TmeshControlPoint<P>>>,
+        dir: TmeshDirection,
     ) -> std::result::Result<(), (i32, Error)> {
         // Check that point is connected to other
         let point_borrow = point.borrow();
@@ -1823,7 +1823,7 @@ mod tests {
         let point_equal = Rc::ptr_eq(point_con, &other);
         point_equal
             .then(|| 0)
-            .ok_or((0, Error::TMeshExistingConnection))?;
+            .ok_or((0, Error::TmeshExistingConnection))?;
 
         // Check that other is connected to point
         let other_borrow = other.borrow();
@@ -1833,7 +1833,7 @@ mod tests {
         let other_equal = Rc::ptr_eq(other_con, &point);
         other_equal
             .then(|| 0)
-            .ok_or((1, Error::TMeshExistingConnection))?;
+            .ok_or((1, Error::TmeshExistingConnection))?;
         Ok(())
     }
 
@@ -1847,7 +1847,7 @@ mod tests {
             Point3::from((0.0, 1.0, 0.0)),
         ];
 
-        let mesh = TMesh::new(points, 1.0);
+        let mesh = Tmesh::new(points, 1.0);
 
         // Test that there are four control points in the mesh after creation.
         assert!(
@@ -1860,7 +1860,7 @@ mod tests {
         let con_test = test_points_are_connected(
             mesh.find(Point3::from((0.0, 0.0, 0.0))).unwrap(),
             mesh.find(Point3::from((1.0, 0.0, 0.0))).unwrap(),
-            TMeshDirection::RIGHT,
+            TmeshDirection::Right,
         );
         assert!(
             con_test.is_ok(),
@@ -1871,7 +1871,7 @@ mod tests {
         let con_test: std::result::Result<(), (i32, Error)> = test_points_are_connected(
             mesh.find(Point3::from((0.0, 0.0, 0.0))).unwrap(),
             mesh.find(Point3::from((0.0, 1.0, 0.0))).unwrap(),
-            TMeshDirection::UP,
+            TmeshDirection::Up,
         );
         assert!(
             con_test.is_ok(),
@@ -1882,7 +1882,7 @@ mod tests {
         let con_test: std::result::Result<(), (i32, Error)> = test_points_are_connected(
             mesh.find(Point3::from((1.0, 1.0, 0.0))).unwrap(),
             mesh.find(Point3::from((0.0, 1.0, 0.0))).unwrap(),
-            TMeshDirection::LEFT,
+            TmeshDirection::Left,
         );
         assert!(
             con_test.is_ok(),
@@ -1893,7 +1893,7 @@ mod tests {
         let con_test: std::result::Result<(), (i32, Error)> = test_points_are_connected(
             mesh.find(Point3::from((1.0, 1.0, 0.0))).unwrap(),
             mesh.find(Point3::from((1.0, 0.0, 0.0))).unwrap(),
-            TMeshDirection::DOWN,
+            TmeshDirection::Down,
         );
         assert!(
             con_test.is_ok(),
@@ -1922,13 +1922,13 @@ mod tests {
             Point3::from((0.0, 1.0, 0.0)),
         ];
 
-        let mut mesh = TMesh::new(points, 1.0);
+        let mut mesh = Tmesh::new(points, 1.0);
 
         mesh.add_control_point(
             Point3::from((0.5, 1.0, 0.0)),
             mesh.find(Point3::from((0.0, 1.0, 0.0)))
                 .expect("Point (0, 1, 0) is a valid point in the T-mesh"),
-            TMeshDirection::RIGHT,
+            TmeshDirection::Right,
             0.5,
         )
         .expect("Arguments provided to add_control_point are valid and insertion is allowed");
@@ -1947,7 +1947,7 @@ mod tests {
         let left_mid_con = test_points_are_connected(
             Rc::clone(&top_left),
             Rc::clone(&top_mid),
-            TMeshDirection::RIGHT,
+            TmeshDirection::Right,
         );
         assert!(
             left_mid_con.is_ok(),
@@ -1958,7 +1958,7 @@ mod tests {
         let right_mid_con = test_points_are_connected(
             Rc::clone(&top_right),
             Rc::clone(&top_mid),
-            TMeshDirection::LEFT,
+            TmeshDirection::Left,
         );
         assert!(
             right_mid_con.is_ok(),
@@ -1969,7 +1969,7 @@ mod tests {
         assert!(
             top_mid
                 .borrow()
-                .get(TMeshDirection::UP)
+                .get(TmeshDirection::Up)
                 .as_ref()
                 .is_some_and(|c| c.0.is_none() && (c.1 - 1.0).so_small()),
             "Top middle edge condition (direction UP) is incorrectly configured"
@@ -1977,7 +1977,7 @@ mod tests {
 
         // Check T-junction for the middle
         assert!(
-            top_mid.borrow().get(TMeshDirection::DOWN).is_none(),
+            top_mid.borrow().get(TmeshDirection::Down).is_none(),
             "Top middle T-junction (direction DOWN) is incorrectly configured"
         );
     }
@@ -2004,14 +2004,14 @@ mod tests {
             Point3::from((0.0, 1.0, 0.0)),
         ];
 
-        let mut mesh = TMesh::new(points, 1.0);
+        let mut mesh = Tmesh::new(points, 1.0);
 
         // Add the first control points
         mesh.add_control_point(
             Point3::from((0.5, 1.0, 0.0)),
             mesh.find(Point3::from((0.0, 1.0, 0.0)))
                 .expect("Point (0, 1, 0) is a valid point in the T-mesh"),
-            TMeshDirection::RIGHT,
+            TmeshDirection::Right,
             0.5,
         )
         .expect("Arguments provided to add_control_point are valid and insertion is allowed");
@@ -2021,7 +2021,7 @@ mod tests {
             Point3::from((0.5, 0.0, 0.0)),
             mesh.find(Point3::from((0.0, 0.0, 0.0)))
                 .expect("Point (0, 0, 0) is a valid point in the T-mesh"),
-            TMeshDirection::RIGHT,
+            TmeshDirection::Right,
             0.5,
         )
         .expect("Arguments provided to add_control_point are valid and insertion is allowed");
@@ -2033,7 +2033,7 @@ mod tests {
         let inferred_con_exist = test_points_are_connected(
             Rc::clone(&bottom_mid),
             Rc::clone(&top_mid),
-            TMeshDirection::UP,
+            TmeshDirection::Up,
         );
         assert!(
             inferred_con_exist.is_ok(),
@@ -2045,7 +2045,7 @@ mod tests {
             let borrow = top_mid.borrow();
 
             (borrow
-                .get_con_knot(TMeshDirection::DOWN)
+                .get_con_knot(TmeshDirection::Down)
                 .expect("Connection should exist")
                 - 1.0)
                 .so_small()
@@ -2068,21 +2068,21 @@ mod tests {
     ///  --+--+--+--
     ///    |  |  |
     /// ```
-    fn test_t_mesh_plus_mesh(mesh: &TMesh<Point3>) {
+    fn test_t_mesh_plus_mesh(mesh: &Tmesh<Point3>) {
         let middle = mesh.find(Point3::from((0.5, 0.5, 0.0))).unwrap();
 
         // Test connections in the four directions
         let up_con = test_points_are_connected(
             Rc::clone(&middle),
             Rc::clone(&mesh.find(Point3::from((0.5, 1.0, 0.0))).unwrap()),
-            TMeshDirection::UP,
+            TmeshDirection::Up,
         );
         assert!(up_con.is_ok(), "Middle is not correctly connected to UP");
 
         let right_con = test_points_are_connected(
             Rc::clone(&middle),
             Rc::clone(&mesh.find(Point3::from((1.0, 0.5, 0.0))).unwrap()),
-            TMeshDirection::RIGHT,
+            TmeshDirection::Right,
         );
         assert!(
             right_con.is_ok(),
@@ -2092,7 +2092,7 @@ mod tests {
         let down_con = test_points_are_connected(
             Rc::clone(&middle),
             Rc::clone(&mesh.find(Point3::from((0.5, 0.0, 0.0))).unwrap()),
-            TMeshDirection::DOWN,
+            TmeshDirection::Down,
         );
         assert!(
             down_con.is_ok(),
@@ -2102,7 +2102,7 @@ mod tests {
         let left_con = test_points_are_connected(
             Rc::clone(&middle),
             Rc::clone(&mesh.find(Point3::from((0.0, 0.5, 0.0))).unwrap()),
-            TMeshDirection::LEFT,
+            TmeshDirection::Left,
         );
         assert!(
             left_con.is_ok(),
@@ -2133,7 +2133,7 @@ mod tests {
             Point3::from((0.0, 1.0, 0.0)),
         ];
 
-        let mut mesh = TMesh::new(points, 1.0);
+        let mut mesh = Tmesh::new(points, 1.0);
 
         // Add the four control points
         let points = [
@@ -2142,7 +2142,7 @@ mod tests {
             ((0.5, 1.0, 0.0), (1.0, 1.0, 0.0)), // top mid,    connects to (1, 1, 0) from its left
             ((0.0, 0.5, 0.0), (0.0, 1.0, 0.0)), // right mid,  connects to (0, 1, 0) from its down
         ];
-        let mut dir = TMeshDirection::RIGHT;
+        let mut dir = TmeshDirection::Right;
 
         for point_pair in points {
             mesh.add_control_point(
@@ -2163,7 +2163,7 @@ mod tests {
             Point3::from((0.5, 0.5, 0.0)),
             mesh.find(Point3::from((0.5, 0.0, 0.0)))
                 .expect("Point (0.5, 0, 0) is a valid point in the T-mesh"),
-            TMeshDirection::UP,
+            TmeshDirection::Up,
             0.5,
         )
         .expect("Arguments provided to add_control_point are valid and insertion is allowed");
@@ -2194,7 +2194,7 @@ mod tests {
             Point3::from((0.0, 1.0, 0.0)),
         ];
 
-        let mut mesh = TMesh::new(points, 1.0);
+        let mut mesh = Tmesh::new(points, 1.0);
 
         // Insert virtical aspect of the plus
         mesh.try_add_absolute_point(Point3::from((0.0, 0.5, 0.0)), (0.0, 0.5))
@@ -2234,7 +2234,7 @@ mod tests {
             Point3::from((0.0, 1.0, 0.0)),
         ];
 
-        let mut mesh = TMesh::new(points, 1.0);
+        let mut mesh = Tmesh::new(points, 1.0);
         mesh.try_add_absolute_point(Point3::from((0.2, 0.0, 0.0)), (0.2, 0.0))
             .expect("Legal point insertion");
 
@@ -2247,7 +2247,7 @@ mod tests {
         assert_eq!(
             knot_interval_check
                 .borrow()
-                .get_con_knot(TMeshDirection::LEFT)
+                .get_con_knot(TmeshDirection::Left)
                 .expect("Known existing connection"),
             0.2,
             "Knot inverval on LEFT does not match expectation"
@@ -2257,7 +2257,7 @@ mod tests {
         assert_eq!(
             knot_interval_check
                 .borrow()
-                .get_con_knot(TMeshDirection::RIGHT)
+                .get_con_knot(TmeshDirection::Right)
                 .expect("Known existing connection"),
             0.8,
             "Knot inverval on RIGHT does not match expectation"
@@ -2288,25 +2288,25 @@ mod tests {
             Point3::from((0.0, 1.0, 0.0)),
         ];
 
-        let mut mesh = TMesh::new(points, 1.0);
+        let mut mesh = Tmesh::new(points, 1.0);
 
         // Test errors on inserting a point into the center of a face (unconnected point)
         assert!(mesh
             .try_add_absolute_point(Point3::from((0.5, 0.5, 0.0)), (0.5, 0.5))
-            .is_err_and(|e| { e == Error::TMeshConnectionNotFound }),
-            "Expected Error TMeshConnectionNotFound when attempting to insert a point in a location with no intersecting mesh edges.");
+            .is_err_and(|e| { e == Error::TmeshConnectionNotFound }),
+            "Expected Error TmeshConnectionNotFound when attempting to insert a point in a location with no intersecting mesh edges.");
 
         // Test errors on zero intervals (duplicate point)
         assert!(mesh
             .try_add_absolute_point(Point3::from((0.0, 0.0, 0.0)), (0.0, 0.0))
-            .is_err_and(|e| { e == Error::TMeshExistingControlPoint }),
-            "Expected Error TMeshExistingControlPoint when attempting to insert a point in a location where a control point already exists.");
+            .is_err_and(|e| { e == Error::TmeshExistingControlPoint }),
+            "Expected Error TmeshExistingControlPoint when attempting to insert a point in a location where a control point already exists.");
 
         // Test errrors on out-of-bounds insertions.
         assert!(mesh
             .try_add_absolute_point(Point3::from((2.0, 2.0, 0.0)), (2.0, 2.0))
-            .is_err_and(|e| { e == Error::TMeshOutOfBoundsInsertion }),
-            "Expected Error TMeshOutOfBoundsInsertion when attempting to insert a point outside the parametric domain of the mesh.");
+            .is_err_and(|e| { e == Error::TmeshOutOfBoundsInsertion }),
+            "Expected Error TmeshOutOfBoundsInsertion when attempting to insert a point outside the parametric domain of the mesh.");
     }
 
     /// Constructs the following T-mesh, testing that navigating from the origin to a connection in the
@@ -2333,7 +2333,7 @@ mod tests {
             Point3::from((0.0, 1.0, 0.0)),
         ];
 
-        let mut mesh = TMesh::new(points, 1.0);
+        let mut mesh = Tmesh::new(points, 1.0);
         let origin = mesh
             .find(Point3::from((0.0, 0.0, 0.0)))
             .expect("Point exists in T-mesh");
@@ -2342,7 +2342,7 @@ mod tests {
         mesh.add_control_point(
             Point3::from((0.0, 0.5, 0.0)),
             Rc::clone(&origin),
-            TMeshDirection::UP,
+            TmeshDirection::Up,
             0.5,
         )
         .expect("Valid addition of control point.");
@@ -2350,7 +2350,7 @@ mod tests {
         // Navigates to the top left point
         let navigation_result = origin
             .borrow()
-            .navigate_until_con(TMeshDirection::UP, TMeshDirection::RIGHT);
+            .navigate_until_con(TmeshDirection::Up, TmeshDirection::Right);
 
         assert!(
             navigation_result.is_ok(),
@@ -2392,7 +2392,7 @@ mod tests {
             Point3::from((0.0, 1.0, 0.0)),
         ];
 
-        let mut mesh = TMesh::new(points, 1.0);
+        let mut mesh = Tmesh::new(points, 1.0);
         let origin = mesh
             .find(Point3::from((0.0, 0.0, 0.0)))
             .expect("Point exists in T-mesh");
@@ -2401,7 +2401,7 @@ mod tests {
         mesh.add_control_point(
             Point3::from((0.0, 0.5, 0.0)),
             Rc::clone(&origin),
-            TMeshDirection::UP,
+            TmeshDirection::Up,
             0.5,
         )
         .expect("Valid addition of control point.");
@@ -2409,7 +2409,7 @@ mod tests {
         // Navigate until error
         let navigation_result = origin
             .borrow()
-            .navigate_until_con(TMeshDirection::UP, TMeshDirection::LEFT);
+            .navigate_until_con(TmeshDirection::Up, TmeshDirection::Left);
 
         assert!(
             navigation_result.is_err(),
@@ -2417,8 +2417,8 @@ mod tests {
         );
         assert_eq!(
             navigation_result.as_ref().err(),
-            Some(&Error::TMeshControlPointNotFound),
-            "Expected TMeshControlPointNotFound, got {:?}",
+            Some(&Error::TmeshControlPointNotFound),
+            "Expected TmeshControlPointNotFound, got {:?}",
             navigation_result.as_ref().err()
         );
     }
@@ -2443,7 +2443,7 @@ mod tests {
     ///  0.0   +-----+-------+-------+-------------------+
     ///       0.0   0.2     0.3 0.4 0.5  0.6  0.7   0.9 1.0
     /// ```
-    fn construct_ray_casting_example_mesh() -> TMesh<Point3> {
+    fn construct_ray_casting_example_mesh() -> Tmesh<Point3> {
         let points = [
             Point3::from((0.0, 0.0, 0.0)),
             Point3::from((1.0, 0.0, 0.0)),
@@ -2451,7 +2451,7 @@ mod tests {
             Point3::from((0.0, 1.0, 0.0)),
         ];
 
-        let mut mesh = TMesh::new(points, 2.5);
+        let mut mesh = Tmesh::new(points, 2.5);
 
         // Absolute knot coordinatess of the points from the mesh above. They are ordered such that the
         // edges in the above image will be constructed without conflict, and so that points are only
@@ -2521,7 +2521,7 @@ mod tests {
             .expect("Known existing point in mesh");
 
         // Cast ray
-        let intersections = TMesh::cast_ray(Rc::clone(&start), TMeshDirection::RIGHT, 9);
+        let intersections = Tmesh::cast_ray(Rc::clone(&start), TmeshDirection::Right, 9);
 
         assert!(
             intersections.is_ok(),
@@ -2562,7 +2562,7 @@ mod tests {
             .expect("Known existing point in mesh");
 
         // Cast ray
-        let intersections = TMesh::cast_ray(Rc::clone(&start), TMeshDirection::RIGHT, 5);
+        let intersections = Tmesh::cast_ray(Rc::clone(&start), TmeshDirection::Right, 5);
 
         assert!(
             intersections.is_ok(),
@@ -2602,7 +2602,7 @@ mod tests {
             .expect("Known existing point in mesh");
 
         // Cast ray
-        let intersections = TMesh::cast_ray(Rc::clone(&start), TMeshDirection::RIGHT, 8);
+        let intersections = Tmesh::cast_ray(Rc::clone(&start), TmeshDirection::Right, 8);
 
         assert!(
             intersections.is_ok(),
@@ -2669,7 +2669,7 @@ mod tests {
             .zip(tmesh_comp.control_points().iter())
             .all(|p| {
                 // Test all directions of every point in the meshes
-                for dir in TMeshDirection::iter() {
+                for dir in TmeshDirection::iter() {
                     // Compare connection types
                     if p.0.borrow().con_type(dir) != p.1.borrow().con_type(dir) {
                         return false;
@@ -2677,13 +2677,13 @@ mod tests {
 
                     // Based on the conenction type, compare connected objects
                     match p.0.borrow().con_type(dir) {
-                        TMeshConnectionType::Edge => {
+                        TmeshConnectionType::Edge => {
                             // Compare knot intervals
                             if p.0.borrow().get_con_knot(dir) != p.1.borrow().get_con_knot(dir) {
                                 return false;
                             }
                         }
-                        TMeshConnectionType::Point => {
+                        TmeshConnectionType::Point => {
                             // Compare knot intervals
                             if p.0.borrow().get_con_knot(dir) != p.1.borrow().get_con_knot(dir) {
                                 return false;
@@ -2718,7 +2718,7 @@ mod tests {
                                 return false;
                             }
                         }
-                        TMeshConnectionType::Tjunction => {}
+                        TmeshConnectionType::Tjunction => {}
                     }
                 }
 
@@ -2738,7 +2738,7 @@ mod tests {
         ];
 
         // Tmesh is now the surface x + y = z
-        let mesh = TMesh::new(points, 1.0);
+        let mesh = Tmesh::new(points, 1.0);
 
         for s in 0..C {
             let s = s as f64 / C as f64;
@@ -2775,7 +2775,7 @@ mod tests {
 
         // Tmesh is now a surface where all point on the surface are of the form (f(x), g(y), f(x) + g(y))
         // approximates x + y = z with medial x and y values
-        let mut mesh = TMesh::new(points, 1.0);
+        let mut mesh = Tmesh::new(points, 1.0);
 
         // Subdivision should be successful
         let sub_res = mesh.subdivide(average_points);
@@ -2796,10 +2796,10 @@ mod tests {
         let middle_point = mesh
             .find(Point3::from((0.5, 0.5, 1.0)))
             .expect("Control point should be located in subdivided mesh");
-        for dir in TMeshDirection::iter() {
+        for dir in TmeshDirection::iter() {
             assert_eq!(
                 middle_point.borrow().con_type(dir),
-                TMeshConnectionType::Point,
+                TmeshConnectionType::Point,
                 "Expected a point connection in the direction {}.",
                 dir
             );
@@ -2840,7 +2840,7 @@ mod tests {
             Point3::from((0.0, 1.0, 1.0)),
         ];
 
-        let mut mesh = TMesh::new(points, 1.0);
+        let mut mesh = Tmesh::new(points, 1.0);
 
         // Make mesh a 5x5
         mesh.subdivide(average_points)
@@ -2879,7 +2879,7 @@ mod tests {
             .try_local_knot_insertion(
                 test.find(Point3::from((0.50, 0.30, 0.300)))
                     .expect("Point is a valid point in mesh"),
-                TMeshDirection::RIGHT,
+                TmeshDirection::Right,
                 0.1,
             )
             .expect("Local knot insertion should succeed");
@@ -2888,14 +2888,14 @@ mod tests {
 
         let p4_prime = ins_point
             .borrow()
-            .get_conected_point(TMeshDirection::RIGHT)
+            .get_conected_point(TmeshDirection::Right)
             .borrow()
             .point()
             .clone();
 
         let p2_prime = ins_point
             .borrow()
-            .get_conected_point(TMeshDirection::LEFT)
+            .get_conected_point(TmeshDirection::Left)
             .borrow()
             .point()
             .clone();
@@ -2943,7 +2943,7 @@ mod tests {
             Point3::from((0.0, 1.0, 1.0)),
         ];
 
-        let mut mesh = TMesh::new(points, 1.0);
+        let mut mesh = Tmesh::new(points, 1.0);
 
         // Make mesh a 5x5
         let _ = mesh.subdivide(average_points);
@@ -2955,7 +2955,7 @@ mod tests {
         let ins_point = test.try_local_knot_insertion(
             test.find(Point3::from((1.0, 1.0, 0.0)))
                 .expect("Point is a valid point in mesh"),
-            TMeshDirection::DOWN,
+            TmeshDirection::Down,
             0.1,
         );
 
@@ -2975,7 +2975,7 @@ mod tests {
         ];
 
         // 5x5
-        let mut mesh = TMesh::new(points, 1.0);
+        let mut mesh = Tmesh::new(points, 1.0);
         mesh.subdivide(average_points)
             .expect("Mesh is not malformed.");
         mesh.subdivide(average_points)
@@ -3015,10 +3015,10 @@ mod tests {
         // center point insertion would have failed, or one of the assertions below would have failed because the
         // LKI is highly sensative to knot intervals, thus, errors in the algorithm would either lead to a failure
         // in future insertions, a mismatch in absolut knot coordinates, or a missing point connection (or two).
-        for dir in TMeshDirection::iter() {
+        for dir in TmeshDirection::iter() {
             assert_eq!(
                 center_point.borrow().con_type(dir),
-                TMeshConnectionType::Point,
+                TmeshConnectionType::Point,
                 "Center point is not connected to a point in the direction {}.",
                 dir
             );
@@ -3066,7 +3066,7 @@ mod tests {
         ];
 
         // 5x5
-        let mut mesh = TMesh::new(points, 1.0);
+        let mut mesh = Tmesh::new(points, 1.0);
         mesh.subdivide(average_points)
             .expect("Mesh is not malformed.");
         mesh.subdivide(average_points)

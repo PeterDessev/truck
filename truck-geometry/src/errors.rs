@@ -171,37 +171,37 @@ the number of control points: {1}"
     DifferentLength,
 
     #[error("Cannot connect T-mesh control point to an existing connection.")]
-    TMeshExistingConnection,
+    TmeshExistingConnection,
 
     #[error("Cannot locate the desired control point in the T-mesh.")]
-    TMeshControlPointNotFound,
+    TmeshControlPointNotFound,
 
     #[error("T-mesh connection does not exist.")]
-    TMeshConnectionNotFound,
+    TmeshConnectionNotFound,
 
     #[error("T-mesh knot ratios for new connections must be between 0.0 and 1.0.")]
-    TMeshInvalidKnotRatio,
+    TmeshInvalidKnotRatio,
 
     #[error("T-mesh knot intervals on a connection do not match in both directions.")]
-    TMeshConnectionInvalidKnotInterval,
+    TmeshConnectionInvalidKnotInterval,
 
     #[error("An uknown T-mesh error occured, and you should not be seeing this message. Please contact the developers.")]
-    TMeshUnkownError,
+    TmeshUnkownError,
 
     #[error("The T-mesh is malformed and should no longer be used.")]
-    TMeshMalformedMesh,
+    TmeshMalformedMesh,
 
     #[error("A knot could not be inserted into the mesh at the desired location without violating Rule 3")]
-    TMeshKnotVectorsNotEqual,
+    TmeshKnotVectorsNotEqual,
 
     #[error("A control point with the same knot coordinates already exists, try inserting manually")]
-    TMeshExistingControlPoint,
+    TmeshExistingControlPoint,
 
     #[error("The control point passed does not belong to the current Tmesh")]
-    TMeshForeignControlPoint,
+    TmeshForeignControlPoint,
 
     #[error("The control point being inserted is out of the bounds of the Tmesh")]
-    TMeshOutOfBoundsInsertion,
+    TmeshOutOfBoundsInsertion,
 }
 
 #[test]
