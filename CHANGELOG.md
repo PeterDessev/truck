@@ -4,6 +4,7 @@ The version is of the bottom crate `truck-rendimpl`.
 
 ## Unreleased
 
+- Update `wgpu` and so on.
 - Improve `Shell::face_adjacency`.
 - Remove quolification from `size_of`.
 - Add `cmake` install for the wasm-test container.
@@ -102,7 +103,7 @@ Step input API is W.I.P. and hidden.
 
 ### Latest `cargo upgrade`
 
-2024-08-04
+2024-08-19
 
 ## v0.5
 
