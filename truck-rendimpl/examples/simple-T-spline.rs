@@ -30,7 +30,7 @@ struct MyApp {
     creator: InstanceCreator,
     rotate_flag: bool,
     prev_cursor: Vector2,
-    tmesh: TMesh<Point3>,
+    tmesh: Tmesh<Point3>,
     subdivisions: usize,
     instance: PolygonInstance,
     wireframe: WireFrameInstance,
@@ -126,43 +126,43 @@ impl MyApp {
         self.update_render_mode();
     }
 
-    fn tmesh_to_control_poly(input: &TMesh<Point3>) -> truck_rendimpl::PolygonMesh {
+    fn tmesh_to_control_poly(input: &Tmesh<Point3>) -> truck_rendimpl::PolygonMesh {
         let points = input.control_points();
         let mut quads: Vec<Vec<usize>> = vec![];
 
-        let upper_left_corners: Vec<(usize, &Rc<RefCell<TMeshControlPoint<Point3>>>)> = points
+        let upper_left_corners: Vec<(usize, &Rc<RefCell<TmeshControlPoint<Point3>>>)> = points
             .iter()
             .enumerate()
             .filter(|(_, p)| {
-                p.borrow().con_type(TMeshDirection::RIGHT) == TMeshConnectionType::Point
-                    && p.borrow().con_type(TMeshDirection::DOWN) == TMeshConnectionType::Point
+                p.borrow().con_type(TmeshDirection::Right) == TmeshConnectionType::Point
+                    && p.borrow().con_type(TmeshDirection::Down) == TmeshConnectionType::Point
             })
             .collect();
 
-        let upper_right_corners: Vec<(usize, &Rc<RefCell<TMeshControlPoint<Point3>>>)> = points
+        let upper_right_corners: Vec<(usize, &Rc<RefCell<TmeshControlPoint<Point3>>>)> = points
             .iter()
             .enumerate()
             .filter(|(_, p)| {
-                p.borrow().con_type(TMeshDirection::LEFT) == TMeshConnectionType::Point
-                    && p.borrow().con_type(TMeshDirection::DOWN) == TMeshConnectionType::Point
+                p.borrow().con_type(TmeshDirection::Left) == TmeshConnectionType::Point
+                    && p.borrow().con_type(TmeshDirection::Down) == TmeshConnectionType::Point
             })
             .collect();
 
-        let lower_left_corners: Vec<(usize, &Rc<RefCell<TMeshControlPoint<Point3>>>)> = points
+        let lower_left_corners: Vec<(usize, &Rc<RefCell<TmeshControlPoint<Point3>>>)> = points
             .iter()
             .enumerate()
             .filter(|(_, p)| {
-                p.borrow().con_type(TMeshDirection::RIGHT) == TMeshConnectionType::Point
-                    && p.borrow().con_type(TMeshDirection::UP) == TMeshConnectionType::Point
+                p.borrow().con_type(TmeshDirection::Right) == TmeshConnectionType::Point
+                    && p.borrow().con_type(TmeshDirection::Up) == TmeshConnectionType::Point
             })
             .collect();
 
-        let lower_right_corners: Vec<(usize, &Rc<RefCell<TMeshControlPoint<Point3>>>)> = points
+        let lower_right_corners: Vec<(usize, &Rc<RefCell<TmeshControlPoint<Point3>>>)> = points
             .iter()
             .enumerate()
             .filter(|(_, p)| {
-                p.borrow().con_type(TMeshDirection::LEFT) == TMeshConnectionType::Point
-                    && p.borrow().con_type(TMeshDirection::UP) == TMeshConnectionType::Point
+                p.borrow().con_type(TmeshDirection::Left) == TmeshConnectionType::Point
+                    && p.borrow().con_type(TmeshDirection::Up) == TmeshConnectionType::Point
             })
             .collect();
 
@@ -170,7 +170,7 @@ impl MyApp {
             let ur = {
                 let borrow = ul
                     .borrow()
-                    .navigate_until_con(TMeshDirection::RIGHT, TMeshDirection::DOWN);
+                    .navigate_until_con(TmeshDirection::Right, TmeshDirection::Down);
 
                 let trav_res = borrow.expect("Faces must be closed");
                 Rc::clone(&trav_res.0)
@@ -179,7 +179,7 @@ impl MyApp {
             let ll = {
                 let borrow = ul
                     .borrow()
-                    .navigate_until_con(TMeshDirection::DOWN, TMeshDirection::RIGHT);
+                    .navigate_until_con(TmeshDirection::Down, TmeshDirection::Right);
 
                 let trav_res = borrow.expect("Faces must be closed");
                 Rc::clone(&trav_res.0)
@@ -188,7 +188,7 @@ impl MyApp {
             let lr = {
                 let borrow = ll
                     .borrow()
-                    .navigate_until_con(TMeshDirection::RIGHT, TMeshDirection::UP);
+                    .navigate_until_con(TmeshDirection::Right, TmeshDirection::Up);
 
                 let trav_res = borrow.expect("Faces must be closed");
                 Rc::clone(&trav_res.0)
@@ -233,7 +233,7 @@ impl MyApp {
     }
 
     fn tmesh_to_polymesh(
-        input: &TMesh<Point3>,
+        input: &Tmesh<Point3>,
         closed_surface: bool,
         n: usize,
     ) -> truck_rendimpl::PolygonMesh {
@@ -455,7 +455,7 @@ impl App for MyApp {
             Point3::from((0.0, 1.0, 1.0)),
         ];
 
-        let mut tmesh = TMesh::new(points, 1.0);
+        let mut tmesh = Tmesh::new(points, 1.0);
 
         fn average_points(a: Point3, b: Point3) -> Point3 {
             0.5 * (a + b.to_vec())
@@ -683,7 +683,7 @@ impl App for MyApp {
 
                 let _ = self
                     .tmesh
-                    .try_local_knot_insertion(point, TMeshDirection::RIGHT, 0.1)
+                    .try_local_knot_insertion(point, TmeshDirection::Right, 0.1)
                     .expect("Local knot insertion should succeed");
 
                 self.regenerate_surfaces();

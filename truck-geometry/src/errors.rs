@@ -202,6 +202,30 @@ the number of control points: {1}"
 
     #[error("The control point being inserted is out of the bounds of the Tmesh")]
     TmeshOutOfBoundsInsertion,
+
+    #[error("The two points are already connected")]
+    TnurccExistingConnection,
+
+    #[error("A T-NURCC face has opposing edges with differing knot intervals")]
+    TnurccNonRectangularFace,
+
+    #[error("A T-NURCC face edge must contain at least 2 control points")]
+    TnurccIncompleteFaceEdge,
+
+    #[error("A T-NURCC face's corners must match in the edge vectors")]
+    TnurccMalformedFace,
+
+    #[error("Automatically connecting the two edges {0} and {1} would result in a bad topological state")]
+    TnurccBadConnectionConditions(usize, usize),
+
+    #[error("Missing face in T-NURCC constructor")]
+    TnurccMissingFace,
+
+    #[error("An edge in T-NURCC constructor has been defined to have more than 2 edges.")]
+    TnurccEdgeTrippleFace,
+    
+    // #[error("Tnurcc construction parameters are invalid")]
+    // TnurccInvalidConstructor,
 }
 
 #[test]

@@ -72,22 +72,86 @@ pub enum TmeshDirection {
 /// # T-NURCC Control Point
 ///
 /// Described in \[Sederberg et al. 2003\].
-#[derive(Clone, PartialEq, Debug)]
-pub struct TnurccControlPoint<P> {
+#[derive(Debug)]
+struct TnurccControlPoint<P> {
+    index: usize,
+    valence: usize,
     point: P, // The control point location in Cartesian space
+    incoming_edge: Option<Rc<RefCell<TnurccEdge<P>>>>,
+}
 
-    // A T-NURCC control point may have any number n connections, making it n valence.
-    connections: Vec<(Option<Rc<P>>, f64)>,
+struct TnurccAcwPointIter<P> {
+    point: Rc<RefCell<TnurccControlPoint<P>>>,
+    start: Rc<RefCell<TnurccEdge<P>>>,
+    cur: Option<Rc<RefCell<TnurccEdge<P>>>>,
+}
+
+#[derive(Debug)]
+struct TnurccFace<P> {
+    index: usize,
+    edge: Option<Rc<RefCell<TnurccEdge<P>>>>,
+    corners: [Option<Rc<RefCell<TnurccControlPoint<P>>>>; 4],
+}
+
+struct TnurccAcwFaceIter<P> {
+    face: Rc<RefCell<TnurccFace<P>>>,
+    start: Rc<RefCell<TnurccEdge<P>>>,
+    cur: Option<Rc<RefCell<TnurccEdge<P>>>>,
+}
+
+#[derive(Clone, PartialEq, Debug, Copy)]
+enum TnurccConnection {
+    LeftCw = 0,
+    LeftAcw = 1,
+    RightCw = 2,
+    RightAcw = 3,
+}
+
+#[derive(Clone, PartialEq, Debug, Copy)]
+enum TnurccVertexEnd {
+    Origin,
+    Dest,
+}
+
+#[derive(Clone, PartialEq, Debug, Copy)]
+enum TnurccFaceSide {
+    Left,
+    Right,
+}
+
+#[derive(Debug)]
+struct TnurccEdge<P> {
+    index: usize,
+    // Connections are always Some(con) if initialized through new
+    connctions: [Option<Rc<RefCell<TnurccEdge<P>>>>; 4],
+
+    face_left: Option<Rc<RefCell<TnurccFace<P>>>>,
+    face_right: Option<Rc<RefCell<TnurccFace<P>>>>,
+
+    origin: Rc<RefCell<TnurccControlPoint<P>>>,
+    dest: Rc<RefCell<TnurccControlPoint<P>>>,
+
+    knot_interval: f64,
 }
 
 /// # T-NURCC
 ///
 /// Described in \[Sederberg et al. 2003\], building on material from \[Sederberg et al. 1999\].
-#[derive(Clone, PartialEq, Debug)]
-pub struct TNURCC<P> {
-    control_points: Vec<Rc<TnurccControlPoint<P>>>,
+#[derive(Debug)]
+pub struct Tnurcc<P> {
+    edges: Vec<Rc<RefCell<TnurccEdge<P>>>>,
+    control_points: Vec<Rc<RefCell<TnurccControlPoint<P>>>>,
+    extraordinary_control_points: Vec<Rc<RefCell<TnurccControlPoint<P>>>>,
+    faces: Vec<Rc<RefCell<TnurccFace<P>>>>,
 }
 
-mod t_mesh_direction;
-mod t_mesh_control_point;
 mod t_mesh;
+mod t_mesh_control_point;
+mod t_mesh_direction;
+
+mod t_nurcc;
+mod t_nurcc_control_point;
+mod t_nurcc_edge;
+mod t_nurcc_iter;
+mod t_nurcc_face;
+mod t_nurcc_enums;
