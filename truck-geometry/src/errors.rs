@@ -212,7 +212,7 @@ the number of control points: {1}"
     #[error("A T-NURCC face edge must contain at least 2 control points")]
     TnurccIncompleteFaceEdge,
 
-    #[error("A T-NURCC face's corners must match in the edge vectors")]
+    #[error("A T-NURCC face must have at least two points and one edge defining it")]
     TnurccMalformedFace,
 
     #[error("Automatically connecting the two edges {0} and {1} would result in a bad topological state")]

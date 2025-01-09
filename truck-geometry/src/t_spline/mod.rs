@@ -123,7 +123,7 @@ enum TnurccFaceSide {
 struct TnurccEdge<P> {
     index: usize,
     // Connections are always Some(con) if initialized through new
-    connctions: [Option<Rc<RefCell<TnurccEdge<P>>>>; 4],
+    connections: [Option<Rc<RefCell<TnurccEdge<P>>>>; 4],
 
     face_left: Option<Rc<RefCell<TnurccFace<P>>>>,
     face_right: Option<Rc<RefCell<TnurccFace<P>>>>,

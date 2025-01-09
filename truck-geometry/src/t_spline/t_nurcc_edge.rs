@@ -9,7 +9,7 @@ impl<P> TnurccEdge<P> {
     ) -> Rc<RefCell<Self>> {
         let edge = TnurccEdge {
             index,
-            connctions: [const { None }; 4],
+            connections: [const { None }; 4],
             face_left: None,
             face_right: None,
             origin: Rc::clone(&origin),
@@ -24,7 +24,7 @@ impl<P> TnurccEdge<P> {
         dest.borrow_mut().incoming_edge = Some(Rc::clone(&edge));
 
         edge.borrow_mut()
-            .connctions
+            .connections
             .fill_with(|| Some(Rc::clone(&edge)));
 
         return edge;
@@ -36,7 +36,7 @@ impl<P> TnurccEdge<P> {
     /// Panics if `self` was not correctly initialized or was mangled, resulting in a `None` connection.
     pub fn get_connection(&self, con: TnurccConnection) -> Rc<RefCell<TnurccEdge<P>>> {
         return Rc::clone(
-            self.connctions[con as usize]
+            self.connections[con as usize]
                 .as_ref()
                 .expect("TnurccEdge should always have a Some(connection)"),
         );
@@ -51,7 +51,7 @@ impl<P> TnurccEdge<P> {
         other: Rc<RefCell<TnurccEdge<P>>>,
         con: TnurccConnection,
     ) -> Rc<RefCell<TnurccEdge<P>>> {
-        return self.connctions[con as usize]
+        return self.connections[con as usize]
             .replace(other)
             .expect("TnurccEdge should always have a Some(connection)");
     }
@@ -306,8 +306,8 @@ impl<P> TnurccEdge<P> {
 
 impl<P> Drop for TnurccEdge<P> {
     fn drop(&mut self) {
-        for i in 0..self.connctions.len() {
-            self.connctions[i] = None;
+        for i in 0..self.connections.len() {
+            self.connections[i] = None;
         }
 
         self.face_left = None;
