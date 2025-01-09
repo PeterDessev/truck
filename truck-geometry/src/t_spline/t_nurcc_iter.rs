@@ -34,6 +34,25 @@ impl<P> TnurccAcwFaceIter<P> {
             None
         }
     }
+
+    /// Creates a new `TnurccAcwFaceIter` which iterates the edges around `f` in an anti-clockwise manner.
+    /// `next` returns `None` without making a full rotation, that is, will not return the first edge twice.
+    ///
+    /// # Returns
+    /// - `None` if `f` does not have a reference edge.
+    ///
+    /// - `Some(iter)` otherwise.
+    pub fn try_from_face(f: Rc<RefCell<TnurccFace<P>>>) -> Option<Self> {
+        if let Some(edge) = f.borrow().edge.as_ref() {
+            Some(TnurccAcwFaceIter {
+                face: Rc::clone(&f),
+                start: Rc::clone(edge),
+                cur: Some(Rc::clone(edge)),
+            })
+        } else {
+            None
+        }
+    }
 }
 
 impl<P> Iterator for TnurccAcwPointIter<P> {
