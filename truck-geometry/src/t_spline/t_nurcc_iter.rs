@@ -1,8 +1,11 @@
 use super::*;
 
 impl<P> TnurccAcwPointIter<P> {
-    /// Creates a new `TnurccAcwPointIter` which iterates the edges around `e`'s vertex `end` in an anti-clockwise manner. 
+    /// Creates a new `TnurccAcwPointIter` which iterates the edges around `e`'s vertex `end` in an anti-clockwise manner.
     /// Returns `None` without making a full rotation, that is, will return `e` as the first element, but not the last.
+    ///
+    /// # Borrows
+    /// Immutably borrows every edge connected to the point at `e`'s `end` when calling `next`.
     pub fn from_edge(e: Rc<RefCell<TnurccEdge<P>>>, end: TnurccVertexEnd) -> Self {
         return TnurccAcwPointIter {
             point: Rc::clone(&e.borrow().get_point(end)),
@@ -13,8 +16,13 @@ impl<P> TnurccAcwPointIter<P> {
 }
 
 impl<P> TnurccAcwFaceIter<P> {
-    /// Creates a new `TnurccAcwFaceIter` which iterates the edges around `e`'s face `side` in an anti-clockwise manner. 
-    /// Returns `None` without making a full rotation, that is, will return `e` as the first element, but not the last.
+    /// Creates a new `TnurccAcwFaceIter` which iterates the edges around `e`'s face `side` in an anti-clockwise manner.
+    /// `next` returns `None` without making a full rotation, that is, will return `e` as the first element, but not the last.
+    ///
+    /// # Returns
+    /// - `None` if `e` does not have a face on `side`.
+    ///
+    /// - `Some(iter)` otherwise.
     pub fn try_from_edge(e: Rc<RefCell<TnurccEdge<P>>>, side: TnurccFaceSide) -> Option<Self> {
         if let Some(face) = e.borrow().get_face(side) {
             Some(TnurccAcwFaceIter {
@@ -36,7 +44,7 @@ impl<P> Iterator for TnurccAcwPointIter<P> {
 
         if let Some(edge) = self.cur.as_ref() {
             // Is point the origin or dest?
-            let end = edge.borrow().get_point_side(Rc::clone(&self.point));
+            let end = edge.borrow().get_point_end(Rc::clone(&self.point));
 
             if end.is_none() {
                 return None;
@@ -44,7 +52,7 @@ impl<P> Iterator for TnurccAcwPointIter<P> {
             let end = end.unwrap();
 
             // Get the next ACW edge for point
-            let new_edge = edge.borrow().acw_edge_from_point(end);
+            let new_edge = edge.borrow().acw_edge_from_end(end);
 
             // If the new edge is the starting edge, stop the iterator by setting cur to none
             // Otherwise, keep going
@@ -77,7 +85,7 @@ impl<P> Iterator for TnurccAcwFaceIter<P> {
             let side = side.unwrap();
 
             // Get the next ACW edge for point
-            let new_edge = edge.borrow().acw_edge_from_face(side);
+            let new_edge = edge.borrow().acw_edge_from_side(side);
 
             // If the new edge is the starting edge, stop the iterator by setting cur to none
             // Otherwise, keep going

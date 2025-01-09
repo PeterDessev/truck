@@ -5,5 +5,6 @@ impl<P> Drop for TnurccFace<P> {
         for i in 0..self.corners.len() {
             self.corners[i] = None;
         }
+        self.edge = None;
     }
 }

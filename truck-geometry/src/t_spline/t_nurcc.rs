@@ -53,12 +53,10 @@ where
     /// # Returns
     ///
     /// - `TnurccNonRectangularFace` if any face is not parametrically rectangular.
-    /// 
+    ///
     /// - `TnurccEdgeTrippleFace` if any edge lies between three faces.
     ///
     /// - `TnurccIncompleteFaceEdge` if any edge is comprised of less than 2 points.
-    ///
-    /// - `TnurccMalformedFace` if the corners across edges do not match.
     ///
     /// - `Ok(Tnurcc)` if the T-NURCC was succsefully created.
     ///
@@ -231,7 +229,7 @@ where
     }
 
     /// Creates a new `Tnurcc` instance using `try_new`, panicking if it fails. See [`Tnurcc::try_new`] for details on the constructor.
-    /// 
+    ///
     /// # Panics
     /// Panics if construction fails.
     pub fn new(points: Vec<P>, faces: Vec<[(usize, Vec<(usize, f64)>); 4]>) -> Self {
@@ -307,7 +305,7 @@ mod tests {
     }
 
     #[test]
-    fn t_nurcc_test_make_cube_fves() {
+    fn t_nurcc_test_make_cube_faces() {
         let surface = make_cube();
         assert!(
             surface.is_ok(),
@@ -351,7 +349,7 @@ mod tests {
                 Rc::clone(&point_edge),
                 point_edge
                     .borrow()
-                    .get_point_side(Rc::clone(&p))
+                    .get_point_end(Rc::clone(&p))
                     .expect("Point should be a side of its incoming edge"),
             );
             let mut next = None;
@@ -374,14 +372,11 @@ mod tests {
             // is the same edge as the one it started at
             let next_point_end = next
                 .borrow()
-                .get_point_side(Rc::clone(&p))
+                .get_point_end(Rc::clone(&p))
                 .expect("Edges reached through a point iter should be connected to that point");
-            let final_edge = next.borrow().acw_edge_from_point(next_point_end);
+            let final_edge = next.borrow().acw_edge_from_end(next_point_end);
             assert!(
-                std::ptr::eq(
-                    final_edge.as_ref(),
-                    point_edge.as_ref()
-                ),
+                std::ptr::eq(final_edge.as_ref(), point_edge.as_ref()),
                 "Iter does not rotate around point correctly. Reached {}, expected {}",
                 final_edge.borrow().index,
                 point_edge.borrow().index,
@@ -427,12 +422,9 @@ mod tests {
                 .borrow()
                 .get_face_side(Rc::clone(&face))
                 .expect("Edges reached through a face iter should be connected to that face");
-            let final_edge = next.borrow().acw_edge_from_face(next_face_side);
+            let final_edge = next.borrow().acw_edge_from_side(next_face_side);
             assert!(
-                std::ptr::eq(
-                    final_edge.as_ref(),
-                    face_edge.as_ref()
-                ),
+                std::ptr::eq(final_edge.as_ref(), face_edge.as_ref()),
                 "Iter does not rotate around face correctly. Reached {}, expected {}",
                 final_edge.borrow().index,
                 face_edge.borrow().index,

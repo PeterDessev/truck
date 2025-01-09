@@ -1,6 +1,8 @@
 use super::*;
 
 impl<P> TnurccEdge<P> {
+    /// Creates a new edge with index `index` and knot interval `knot_interval`, spanning
+    /// from `origin` to `dest`. All connections will be to itself, and faces will be set to `None`.
     pub fn new(
         index: usize,
         knot_interval: f64,
@@ -16,7 +18,7 @@ impl<P> TnurccEdge<P> {
             dest: Rc::clone(&dest),
             knot_interval,
         };
-        let edge = Rc::new(RefCell::new(edge));
+        let edge: Rc<RefCell<TnurccEdge<P>>> = Rc::new(RefCell::new(edge));
 
         origin.borrow_mut().valence += 1;
         origin.borrow_mut().incoming_edge = Some(Rc::clone(&edge));
@@ -57,7 +59,18 @@ impl<P> TnurccEdge<P> {
     }
 
     /// Returns the next anti-clockwise edge around `self`'s vertex `end`.
-    pub fn acw_edge_from_point(&self, end: TnurccVertexEnd) -> Rc<RefCell<TnurccEdge<P>>> {
+    pub fn acw_edge_from_end(&self, end: TnurccVertexEnd) -> Rc<RefCell<TnurccEdge<P>>> {
+        // Determine which end the point is connected to on incoming_edge.
+        let dir = match end {
+            TnurccVertexEnd::Origin => TnurccConnection::LeftCw,
+            TnurccVertexEnd::Dest => TnurccConnection::RightCw,
+        };
+
+        self.get_connection(dir)
+    }
+
+    /// Returns the next clockwise edge around `self`'s vertex `end`.
+    pub fn cw_edge_from_end(&self, end: TnurccVertexEnd) -> Rc<RefCell<TnurccEdge<P>>> {
         // Determine which end the point is connected to on incoming_edge.
         let dir = match end {
             TnurccVertexEnd::Origin => TnurccConnection::RightAcw,
@@ -67,8 +80,46 @@ impl<P> TnurccEdge<P> {
         self.get_connection(dir)
     }
 
+    /// Returns the next anti-clockwise edge around `self`'s face `f`.
+    ///
+    /// # Returns
+    /// - `None` if `f` is not on either side of `self`.
+    ///
+    /// - `Some(edge)` otherwise.
+    pub fn acw_edge_from_face(
+        &self,
+        f: Rc<RefCell<TnurccFace<P>>>,
+    ) -> Option<Rc<RefCell<TnurccEdge<P>>>> {
+        // Determine which side the face is connected to.
+        let dir = match self.get_face_side(f)? {
+            TnurccFaceSide::Left => TnurccConnection::LeftAcw,
+            TnurccFaceSide::Right => TnurccConnection::RightAcw,
+        };
+
+        Some(self.get_connection(dir))
+    }
+
+    /// Returns the next clockwise edge around `self`'s face `f`.
+    ///
+    /// # Returns
+    /// - `None` if `f` is not on either side of `self`.
+    ///
+    /// - `Some(edge)` otherwise.
+    pub fn cw_edge_from_face(
+        &self,
+        f: Rc<RefCell<TnurccFace<P>>>,
+    ) -> Option<Rc<RefCell<TnurccEdge<P>>>> {
+        // Determine which side the face is connected to.
+        let dir = match self.get_face_side(f)? {
+            TnurccFaceSide::Left => TnurccConnection::LeftCw,
+            TnurccFaceSide::Right => TnurccConnection::RightCw,
+        };
+
+        Some(self.get_connection(dir))
+    }
+
     /// Returns the next anti-clockwise edge around `self`'s face `side`.
-    pub fn acw_edge_from_face(&self, side: TnurccFaceSide) -> Rc<RefCell<TnurccEdge<P>>> {
+    pub fn acw_edge_from_side(&self, side: TnurccFaceSide) -> Rc<RefCell<TnurccEdge<P>>> {
         // Determine which end the point is connected to on incoming_edge.
         let dir = match side {
             TnurccFaceSide::Left => TnurccConnection::LeftAcw,
@@ -78,13 +129,24 @@ impl<P> TnurccEdge<P> {
         self.get_connection(dir)
     }
 
-    /// Returns the side that `point` is located on, if any.
-    /// 
+    /// Returns the next clockwise edge around `self`'s face `side`.
+    pub fn cw_edge_from_side(&self, side: TnurccFaceSide) -> Rc<RefCell<TnurccEdge<P>>> {
+        // Determine which end the point is connected to on incoming_edge.
+        let dir = match side {
+            TnurccFaceSide::Left => TnurccConnection::LeftCw,
+            TnurccFaceSide::Right => TnurccConnection::RightCw,
+        };
+
+        self.get_connection(dir)
+    }
+
+    /// Returns the end that `point` is located on, if any.
+    ///
     /// # Returns
     /// - `Some(end)` if `point` is connected to `self`.
-    /// 
+    ///
     /// - `None` otherwise.
-    pub fn get_point_side(
+    pub fn get_point_end(
         &self,
         point: Rc<RefCell<TnurccControlPoint<P>>>,
     ) -> Option<TnurccVertexEnd> {
@@ -106,12 +168,15 @@ impl<P> TnurccEdge<P> {
         }
     }
 
-    /// Returns which side the face `face` is on, if it is on any.
-    /// 
+    /// Returns which side the face `face` is on, if it is on any. Note that the side is always relative to the "vector"
+    /// of the edge pointing "up", that is, the source point is the first anti-clockwise point out of the origin dest
+    /// pair to be encountered on the left face, and the last anti-clockwise point out of the pair to be encountered on 
+    /// the right.
+    ///
     /// # Returns
     /// - `Some(side)` if `face` is connected to `self`.
-    /// 
-    /// - `None` if `self` is not connected to `face`. 
+    ///
+    /// - `None` if `self` is not connected to `face`.
     pub fn get_face_side(&self, face: Rc<RefCell<TnurccFace<P>>>) -> Option<TnurccFaceSide> {
         if self
             .face_left
@@ -131,10 +196,10 @@ impl<P> TnurccEdge<P> {
     }
 
     /// Returns the face on the side `side`, if it exists.
-    /// 
+    ///
     /// # Returns
     /// - `Some(face)` if the face on `side` exists.
-    /// 
+    ///
     /// - `None` if the face on `side` does not exist.
     pub fn get_face(&self, side: TnurccFaceSide) -> Option<Rc<RefCell<TnurccFace<P>>>> {
         use TnurccFaceSide::*;
@@ -145,17 +210,22 @@ impl<P> TnurccEdge<P> {
     }
 
     /// Automatically tries to connect two edges `first` and `other` that share at least one vertex and one face.
-    /// 
+    /// Performs this agnostic of the current connections of both edges, and does not modify any connections it does
+    /// not have to. Note that the algorithm greedily connects the edges for up to two of four possible connections.
+    ///
     /// # Returns
     /// - `TnurccBadConnectionConditions` if the two edges were not able to be connected.
-    /// 
+    ///
     /// - `Ok()` otherwise.
-    /// 
+    ///
     /// # Borrows
     /// Mutably borrows `first` and `other`.
-    /// 
+    ///
     /// # Panics
     /// Panics if any borrows fail.
+    /// 
+    /// # Undefined Behaviour
+    /// Undefined if `first` and `other` are the same edge instance, or if all the relevant members are identical between the two.
     pub fn connect(
         first: Rc<RefCell<TnurccEdge<P>>>,
         other: Rc<RefCell<TnurccEdge<P>>>,
