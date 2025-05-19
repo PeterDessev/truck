@@ -157,6 +157,7 @@ struct TnurccEdge<P> {
 pub struct Tnurcc<P> {
     edges: Vec<Rc<RefCell<TnurccEdge<P>>>>,
     control_points: Vec<Rc<RefCell<TnurccControlPoint<P>>>>,
+    #[allow(dead_code)]
     extraordinary_control_points: Vec<Rc<RefCell<TnurccControlPoint<P>>>>,
     faces: Vec<Rc<RefCell<TnurccFace<P>>>>,
 }
@@ -168,6 +169,6 @@ mod t_mesh_direction;
 mod t_nurcc;
 mod t_nurcc_control_point;
 mod t_nurcc_edge;
-mod t_nurcc_iter;
-mod t_nurcc_face;
 mod t_nurcc_enums;
+mod t_nurcc_face;
+mod t_nurcc_iter;

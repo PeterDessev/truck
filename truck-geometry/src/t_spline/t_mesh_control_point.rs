@@ -38,12 +38,12 @@ impl<P> TmeshControlPoint<P> {
     }
 
     /// Get a mutable reference to the connection on the side `dir`.
-    fn get_mut(&mut self, dir: TmeshDirection) -> &mut Option<TmeshConnection<P>> {
+    fn connection_mut(&mut self, dir: TmeshDirection) -> &mut Option<TmeshConnection<P>> {
         return &mut self.connections[dir as usize];
     }
 
     /// Returns the knot coordinates for `self`
-    pub fn get_knot_coordinates(&self) -> (f64, f64) {
+    pub fn knot_coordinates(&self) -> (f64, f64) {
         return self.knot_coordinates.clone();
     }
 
@@ -77,7 +77,7 @@ impl<P> TmeshControlPoint<P> {
     ///
     /// - `Ok` if the connection was modified.
     pub fn set_edge_con_weight(&mut self, dir: TmeshDirection, weight: f64) -> Result<()> {
-        if let Some(connection) = self.get_mut(dir) {
+        if let Some(connection) = self.connection_mut(dir) {
             // If the connection is not an edge condition, return an error.
             if connection.0.is_some() {
                 return Err(Error::TmeshExistingConnection);
@@ -139,9 +139,12 @@ impl<P> TmeshControlPoint<P> {
     ///
     /// - `Ok` if the edge codition was successfully removed.
     pub fn remove_edge_condition(&mut self, dir: TmeshDirection) -> Result<()> {
-        let is_edge = self.get_mut(dir).as_ref().is_some_and(|c| c.0.is_none());
+        let is_edge = self
+            .connection_mut(dir)
+            .as_ref()
+            .is_some_and(|c| c.0.is_none());
         if is_edge {
-            *self.get_mut(dir) = None;
+            *self.connection_mut(dir) = None;
             Ok(())
         } else {
             Err(Error::TmeshExistingConnection)
@@ -259,7 +262,7 @@ impl<P> TmeshControlPoint<P> {
     /// - `None` if a T-junction is found in the directoin `dir`.
     ///
     /// - `Some(f64)` otherwise.
-    pub fn get_con_knot(&self, dir: TmeshDirection) -> Option<f64> {
+    pub fn connection_knot(&self, dir: TmeshDirection) -> Option<f64> {
         match self.con_type(dir) {
             TmeshConnectionType::Edge | TmeshConnectionType::Point => {
                 return Some(
@@ -351,7 +354,7 @@ impl<P> TmeshControlPoint<P> {
     /// - `TmeshControlPointNotFound` if the connection in direction `dir` is an edge condition.
     ///
     /// - `Ok(point)` if the connection in direction `dir` is a point, where `point` is the corresponding control point.
-    pub fn try_get_conected_point(
+    pub fn try_conected_point(
         &self,
         dir: TmeshDirection,
     ) -> Result<Rc<RefCell<TmeshControlPoint<P>>>> {
@@ -373,10 +376,7 @@ impl<P> TmeshControlPoint<P> {
     ///
     /// # Panics
     /// If there is no point connected to self in direction `dir`.
-    pub fn get_conected_point(
-        &self,
-        dir: TmeshDirection,
-    ) -> Rc<RefCell<TmeshControlPoint<P>>> {
+    pub fn conected_point(&self, dir: TmeshDirection) -> Rc<RefCell<TmeshControlPoint<P>>> {
         let connected_point = &self
             .get(dir)
             .as_ref()

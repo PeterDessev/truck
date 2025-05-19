@@ -8,7 +8,7 @@ impl<P> TnurccAcwPointIter<P> {
     /// Immutably borrows every edge connected to the point at `e`'s `end` when calling `next`.
     pub fn from_edge(e: Rc<RefCell<TnurccEdge<P>>>, end: TnurccVertexEnd) -> Self {
         return TnurccAcwPointIter {
-            point: Rc::clone(&e.borrow().get_point(end)),
+            point: Rc::clone(&e.borrow().point_at_end(end)),
             start: Rc::clone(&e),
             cur: Some(Rc::clone(&e)),
         };
@@ -24,7 +24,7 @@ impl<P> TnurccAcwFaceIter<P> {
     ///
     /// - `Some(iter)` otherwise.
     pub fn try_from_edge(e: Rc<RefCell<TnurccEdge<P>>>, side: TnurccFaceSide) -> Option<Self> {
-        if let Some(face) = e.borrow().get_face(side) {
+        if let Some(face) = e.borrow().face_from_side(side) {
             Some(TnurccAcwFaceIter {
                 face,
                 start: Rc::clone(&e),
@@ -42,6 +42,7 @@ impl<P> TnurccAcwFaceIter<P> {
     /// - `None` if `f` does not have a reference edge.
     ///
     /// - `Some(iter)` otherwise.
+    #[allow(dead_code)]
     pub fn try_from_face(f: Rc<RefCell<TnurccFace<P>>>) -> Option<Self> {
         if let Some(edge) = f.borrow().edge.as_ref() {
             Some(TnurccAcwFaceIter {
@@ -63,7 +64,7 @@ impl<P> Iterator for TnurccAcwPointIter<P> {
 
         if let Some(edge) = self.cur.as_ref() {
             // Is point the origin or dest?
-            let end = edge.borrow().get_point_end(Rc::clone(&self.point));
+            let end = edge.borrow().point_end(Rc::clone(&self.point));
 
             if end.is_none() {
                 return None;
@@ -96,7 +97,7 @@ impl<P> Iterator for TnurccAcwFaceIter<P> {
 
         if let Some(edge) = self.cur.as_ref() {
             // Is point the origin or dest?
-            let side = edge.borrow().get_face_side(Rc::clone(&self.face));
+            let side = edge.borrow().face_side(Rc::clone(&self.face));
 
             if side.is_none() {
                 return None;

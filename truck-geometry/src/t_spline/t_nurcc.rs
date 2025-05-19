@@ -285,7 +285,7 @@ where
             let mut w_vec = Vec::with_capacity(self.faces.len());
             let mut w_points = Vec::with_capacity(self.faces.len());
 
-            let mut cir_points = TnurccFace::get_boundry_verticies(Rc::clone(face));
+            let mut cir_points = TnurccFace::boundry_verticies(Rc::clone(face));
             // If there are no points defining a face, that is a problem.
             if cir_points.len() == 0 {
                 return Err(Error::TnurccMalformedFace);
@@ -362,7 +362,7 @@ where
             let a_denom: f64 = (0..4)
                 .map(|n| {
                     edge.borrow()
-                        .get_connection(TnurccConnection::from_usize(n))
+                        .connection(TnurccConnection::from_usize(n))
                         .borrow()
                         .knot_interval
                 })
@@ -377,7 +377,7 @@ where
                 } else {
                     [LeftAcw, LeftCw]
                         .iter()
-                        .map(|c| edge.borrow().get_connection(*c).borrow().knot_interval)
+                        .map(|c| edge.borrow().connection(*c).borrow().knot_interval)
                         .sum::<f64>()
                         / a_denom
                 }
@@ -390,7 +390,7 @@ where
                 } else {
                     [RightAcw, RightCw]
                         .iter()
-                        .map(|c| edge.borrow().get_connection(*c).borrow().knot_interval)
+                        .map(|c| edge.borrow().connection(*c).borrow().knot_interval)
                         .sum::<f64>()
                         / a_denom
                 }
@@ -449,7 +449,7 @@ where
                     .fold((P::origin(), 0.0), |acc, win| {
                         let face = win[0]
                             .borrow()
-                            .get_common_face(Rc::clone(&win[1]))
+                            .common_face(Rc::clone(&win[1]))
                             .expect("Adjacent edges should share a face.");
                         // Get the face point calculated in equation 11 in \[Sederberg et al. 1998\]
                         let f_point = face_points[face.borrow().index].clone();
@@ -491,7 +491,7 @@ where
             // vector such that a given index maps the face to and from the face point.
             let face = Rc::clone(&self.faces[face_i]);
             // perim will only contain the edges which were originally part of the perimiter for the face
-            let perim = TnurccFace::get_border_edges(Rc::clone(&face))
+            let perim = TnurccFace::border_edges(Rc::clone(&face))
                 .into_iter()
                 .filter(|e| split_edge.get(e.borrow().index).is_some())
                 .collect::<Vec<_>>();
@@ -562,11 +562,11 @@ where
                     edge_conjugates.push(
                         match edge
                             .borrow()
-                            .get_face_side(Rc::clone(&face))
+                            .face_side(Rc::clone(&face))
                             .expect("Edge on face perimiter should be connected to face")
                         {
-                            TnurccFaceSide::Left => edge.borrow().get_connection(LeftAcw),
-                            TnurccFaceSide::Right => edge.borrow().get_connection(RightCw),
+                            TnurccFaceSide::Left => edge.borrow().connection(LeftAcw),
+                            TnurccFaceSide::Right => edge.borrow().connection(RightCw),
                         },
                     );
 
@@ -586,7 +586,7 @@ where
                     )
                     .expect("Subdivide should always be able to split an edge");
                     // The edge that results from the split
-                    let pair = edge.borrow().get_connection(LeftAcw);
+                    let pair = edge.borrow().connection(LeftAcw);
 
                     // Push split edge and new control point
                     self.edges.push(Rc::clone(&pair));
@@ -603,7 +603,7 @@ where
                 let prev_perim_index = (perim_i + perim.len() - 1) % perim.len();
                 let edge_face_side = edge
                     .borrow()
-                    .get_face_side(Rc::clone(&self.faces[face_i]))
+                    .face_side(Rc::clone(&self.faces[face_i]))
                     .expect("Edge on face perimiter should be connected to face");
 
                 // Depending on the orientation of the current edge, different points must be assigned to be the corners of the face.
@@ -842,7 +842,7 @@ mod tests {
                 Rc::clone(&point_edge),
                 point_edge
                     .borrow()
-                    .get_point_end(Rc::clone(&p))
+                    .point_end(Rc::clone(&p))
                     .expect("Point should be a side of its incoming edge"),
             );
             let mut next = None;
@@ -865,7 +865,7 @@ mod tests {
             // is the same edge as the one it started at
             let next_point_end = next
                 .borrow()
-                .get_point_end(Rc::clone(&p))
+                .point_end(Rc::clone(&p))
                 .expect("Edges reached through a point iter should be connected to that point");
             let final_edge = next.borrow().acw_edge_from_end(next_point_end);
             assert!(
@@ -891,7 +891,7 @@ mod tests {
 
             let mut iter = TnurccAcwFaceIter::try_from_edge(
                 Rc::clone(&face_edge),
-                face_edge.borrow().get_face_side(Rc::clone(face)).unwrap(),
+                face_edge.borrow().face_side(Rc::clone(face)).unwrap(),
             )
             .expect("face_edge should have Some(face) because it was cloned from face");
             let mut next = None;
@@ -913,7 +913,7 @@ mod tests {
             // is the same edge as the one it started at
             let next_face_side = next
                 .borrow()
-                .get_face_side(Rc::clone(&face))
+                .face_side(Rc::clone(&face))
                 .expect("Edges reached through a face iter should be connected to that face");
             let final_edge = next.borrow().acw_edge_from_side(next_face_side);
             assert!(
@@ -978,7 +978,7 @@ mod tests {
                 !(f.borrow()
                     .edge
                     .as_ref()
-                    .is_some_and(|e| e.borrow().get_face_side(Rc::clone(&f)).is_some()))
+                    .is_some_and(|e| e.borrow().face_side(Rc::clone(&f)).is_some()))
             })
             .map(|f| Rc::clone(&f))
             .collect::<Vec<_>>();
@@ -991,7 +991,7 @@ mod tests {
                 !(c.borrow()
                     .incoming_edge
                     .as_ref()
-                    .is_some_and(|e| e.borrow().get_point_end(Rc::clone(&c)).is_some()))
+                    .is_some_and(|e| e.borrow().point_end(Rc::clone(&c)).is_some()))
             })
             .map(|c| Rc::clone(&c))
             .collect::<Vec<_>>();
@@ -1013,15 +1013,15 @@ mod tests {
                 acw_traverse_edge = {
                     let side = acw_traverse_edge
                         .borrow()
-                        .get_face_side(Rc::clone(f))
+                        .face_side(Rc::clone(f))
                         .expect(format!("Face should be connected to reference edge, error on ACW traversal {} face {}", i, f.borrow().index).as_str());
                     match side {
                         TnurccFaceSide::Left => acw_traverse_edge
                             .borrow()
-                            .get_connection(TnurccConnection::LeftAcw),
+                            .connection(TnurccConnection::LeftAcw),
                         TnurccFaceSide::Right => acw_traverse_edge
                             .borrow()
-                            .get_connection(TnurccConnection::RightAcw),
+                            .connection(TnurccConnection::RightAcw),
                     }
                 };
             }
@@ -1033,15 +1033,15 @@ mod tests {
                 cw_traverse_edge = {
                     let side = cw_traverse_edge
                         .borrow()
-                        .get_face_side(Rc::clone(f))
+                        .face_side(Rc::clone(f))
                         .expect(format!("Face should be connected to reference edge, error on CW traversal {} face {}", i, f.borrow().index).as_str());
                     match side {
                         TnurccFaceSide::Left => cw_traverse_edge
                             .borrow()
-                            .get_connection(TnurccConnection::LeftCw),
+                            .connection(TnurccConnection::LeftCw),
                         TnurccFaceSide::Right => cw_traverse_edge
                             .borrow()
-                            .get_connection(TnurccConnection::RightCw),
+                            .connection(TnurccConnection::RightCw),
                     }
                 };
             }

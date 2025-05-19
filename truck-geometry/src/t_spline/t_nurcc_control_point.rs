@@ -13,7 +13,7 @@ impl<P> TnurccControlPoint<P> {
     }
 
     /// Returns a vector containing all edges connected to `p`. Returns an empty vector if `p` does
-    /// not have an `incoming_edge`. Collects in an anti-clockwise fashion starting from `p`'s 
+    /// not have an `incoming_edge`. Collects in an anti-clockwise fashion starting from `p`'s
     /// reference `incoming_edge`.
     ///
     /// # Panics
@@ -22,7 +22,7 @@ impl<P> TnurccControlPoint<P> {
         if let Some(edge) = p.borrow().incoming_edge.as_ref().map(|r| Rc::clone(r)) {
             let point_end = edge
                 .borrow()
-                .get_point_end(Rc::clone(&p))
+                .point_end(Rc::clone(&p))
                 .expect("Vertex should be on either end of reference edge.");
 
             TnurccAcwPointIter::from_edge(Rc::clone(&edge), point_end).collect()
@@ -51,9 +51,9 @@ impl<P> TnurccControlPoint<P> {
         if let Some(in_edge) = center.borrow().incoming_edge.as_ref().map(|r| Rc::clone(r)) {
             TnurccAcwPointIter::from_edge(
                 Rc::clone(&in_edge),
-                in_edge.borrow().get_point_end(Rc::clone(&center))?,
+                in_edge.borrow().point_end(Rc::clone(&center))?,
             )
-            .find(|e| e.borrow().get_point_end(Rc::clone(&op)).is_some())
+            .find(|e| e.borrow().point_end(Rc::clone(&op)).is_some())
         } else {
             None
         }

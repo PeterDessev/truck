@@ -10,11 +10,11 @@ impl<P> TnurccFace<P> {
     /// 
     /// # Panics
     /// Panics if `f`'s reference `edge` does not reference `f` as a face on either side.
-    pub fn get_boundry_verticies(f: Rc<RefCell<Self>>) -> Vec<Rc<RefCell<TnurccControlPoint<P>>>> {
+    pub fn boundry_verticies(f: Rc<RefCell<Self>>) -> Vec<Rc<RefCell<TnurccControlPoint<P>>>> {
         if let Some(edge) = f.borrow().edge.as_ref().map(|r| Rc::clone(r)) {
             let face_side = edge
                 .borrow()
-                .get_face_side(Rc::clone(&f))
+                .face_side(Rc::clone(&f))
                 .expect("Face edge should be on either side of that edge.");
             let iter = TnurccAcwFaceIter::try_from_edge(Rc::clone(&edge), face_side)
                 .expect("Edge should have face on side if get_face_side succeeded");
@@ -22,7 +22,7 @@ impl<P> TnurccFace<P> {
             iter.map(|e| {
                 match e
                     .borrow()
-                    .get_face_side(Rc::clone(&f))
+                    .face_side(Rc::clone(&f))
                     .expect("Edge on perimeter of face should be connected to the face")
                 {
                     TnurccFaceSide::Left => Rc::clone(&e.borrow().origin),
@@ -44,14 +44,14 @@ impl<P> TnurccFace<P> {
     ///
     /// # Panics
     /// Panics if `f`'s reference `edge` does not reference `f` as a face on either side.
-    pub fn get_border_edges(f: Rc<RefCell<Self>>) -> Vec<Rc<RefCell<TnurccEdge<P>>>> {
+    pub fn border_edges(f: Rc<RefCell<Self>>) -> Vec<Rc<RefCell<TnurccEdge<P>>>> {
         if let Some(edge) = f.borrow().edge.as_ref().map(|r| Rc::clone(r)) {
             let face_side = edge
                 .borrow()
-                .get_face_side(Rc::clone(&f))
+                .face_side(Rc::clone(&f))
                 .expect("Face edge should be on either side of that edge.");
             let iter = TnurccAcwFaceIter::try_from_edge(Rc::clone(&edge), face_side)
-                .expect("Edge should have face on side if get_face_side succeeded");
+                .expect("Edge should have face on side if face_side succeeded");
 
             iter.collect()
         } else {

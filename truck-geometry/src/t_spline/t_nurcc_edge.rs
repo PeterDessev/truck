@@ -37,7 +37,7 @@ impl<P> TnurccEdge<P> {
     ///
     /// # Panics
     /// Panics if `self` was not correctly initialized or was mangled, resulting in a `None` connection.
-    pub fn get_connection(&self, con: TnurccConnection) -> Rc<RefCell<TnurccEdge<P>>> {
+    pub fn connection(&self, con: TnurccConnection) -> Rc<RefCell<TnurccEdge<P>>> {
         return Rc::clone(
             self.connections[con as usize]
                 .as_ref()
@@ -70,12 +70,12 @@ impl<P> TnurccEdge<P> {
         p: Rc<RefCell<TnurccControlPoint<P>>>,
     ) -> Option<Rc<RefCell<TnurccEdge<P>>>> {
         // Determine which end the point is connected to on incoming_edge.
-        let dir = match self.get_point_end(p)? {
+        let dir = match self.point_end(p)? {
             TnurccVertexEnd::Origin => TnurccConnection::LeftCw,
             TnurccVertexEnd::Dest => TnurccConnection::RightCw,
         };
 
-        Some(self.get_connection(dir))
+        Some(self.connection(dir))
     }
 
     /// Returns the next clockwise edge around `self`'s vertex `p`.
@@ -89,12 +89,12 @@ impl<P> TnurccEdge<P> {
         p: Rc<RefCell<TnurccControlPoint<P>>>,
     ) -> Option<Rc<RefCell<TnurccEdge<P>>>> {
         // Determine which end the point is connected to on incoming_edge.
-        let dir = match self.get_point_end(p)? {
+        let dir = match self.point_end(p)? {
             TnurccVertexEnd::Origin => TnurccConnection::RightAcw,
             TnurccVertexEnd::Dest => TnurccConnection::LeftAcw,
         };
 
-        Some(self.get_connection(dir))
+        Some(self.connection(dir))
     }
 
     /// Returns the `n`th anti-clockwise edge around `e`'s vertex `p`.
@@ -155,10 +155,11 @@ impl<P> TnurccEdge<P> {
             TnurccVertexEnd::Dest => TnurccConnection::RightCw,
         };
 
-        self.get_connection(dir)
+        self.connection(dir)
     }
 
     /// Returns the next clockwise edge around `self`'s vertex `end`.
+    #[allow(dead_code)]
     pub fn cw_edge_from_end(&self, end: TnurccVertexEnd) -> Rc<RefCell<TnurccEdge<P>>> {
         // Determine which end the point is connected to on incoming_edge.
         let dir = match end {
@@ -166,7 +167,7 @@ impl<P> TnurccEdge<P> {
             TnurccVertexEnd::Dest => TnurccConnection::LeftAcw,
         };
 
-        self.get_connection(dir)
+        self.connection(dir)
     }
 
     /// Returns the next anti-clockwise edge around `self`'s face `f`.
@@ -175,17 +176,18 @@ impl<P> TnurccEdge<P> {
     /// - `None` if `f` is not on either side of `self`.
     ///
     /// - `Some(edge)` otherwise.
+    #[allow(dead_code)]
     pub fn acw_edge_from_face(
         &self,
         f: Rc<RefCell<TnurccFace<P>>>,
     ) -> Option<Rc<RefCell<TnurccEdge<P>>>> {
         // Determine which side the face is connected to.
-        let dir = match self.get_face_side(f)? {
+        let dir = match self.face_side(f)? {
             TnurccFaceSide::Left => TnurccConnection::LeftAcw,
             TnurccFaceSide::Right => TnurccConnection::RightAcw,
         };
 
-        Some(self.get_connection(dir))
+        Some(self.connection(dir))
     }
 
     /// Returns the next clockwise edge around `self`'s face `f`.
@@ -194,17 +196,18 @@ impl<P> TnurccEdge<P> {
     /// - `None` if `f` is not on either side of `self`.
     ///
     /// - `Some(edge)` otherwise.
+    #[allow(dead_code)]
     pub fn cw_edge_from_face(
         &self,
         f: Rc<RefCell<TnurccFace<P>>>,
     ) -> Option<Rc<RefCell<TnurccEdge<P>>>> {
         // Determine which side the face is connected to.
-        let dir = match self.get_face_side(f)? {
+        let dir = match self.face_side(f)? {
             TnurccFaceSide::Left => TnurccConnection::LeftCw,
             TnurccFaceSide::Right => TnurccConnection::RightCw,
         };
 
-        Some(self.get_connection(dir))
+        Some(self.connection(dir))
     }
 
     /// Returns the next anti-clockwise edge around `self`'s face `side`.
@@ -215,10 +218,11 @@ impl<P> TnurccEdge<P> {
             TnurccFaceSide::Right => TnurccConnection::RightAcw,
         };
 
-        self.get_connection(dir)
+        self.connection(dir)
     }
 
     /// Returns the next clockwise edge around `self`'s face `side`.
+    #[allow(dead_code)]
     pub fn cw_edge_from_side(&self, side: TnurccFaceSide) -> Rc<RefCell<TnurccEdge<P>>> {
         // Determine which end the point is connected to on incoming_edge.
         let dir = match side {
@@ -226,7 +230,7 @@ impl<P> TnurccEdge<P> {
             TnurccFaceSide::Right => TnurccConnection::RightCw,
         };
 
-        self.get_connection(dir)
+        self.connection(dir)
     }
 
     /// Returns the end that `point` is located on, if any.
@@ -235,10 +239,7 @@ impl<P> TnurccEdge<P> {
     /// - `Some(end)` if `point` is connected to `self`.
     ///
     /// - `None` otherwise.
-    pub fn get_point_end(
-        &self,
-        point: Rc<RefCell<TnurccControlPoint<P>>>,
-    ) -> Option<TnurccVertexEnd> {
+    pub fn point_end(&self, point: Rc<RefCell<TnurccControlPoint<P>>>) -> Option<TnurccVertexEnd> {
         if std::ptr::eq(self.origin.as_ref(), point.as_ref()) {
             Some(TnurccVertexEnd::Origin)
         } else if std::ptr::eq(self.dest.as_ref(), point.as_ref()) {
@@ -249,7 +250,7 @@ impl<P> TnurccEdge<P> {
     }
 
     /// Returns the point on the end `end`.
-    pub fn get_point(&self, end: TnurccVertexEnd) -> Rc<RefCell<TnurccControlPoint<P>>> {
+    pub fn point_at_end(&self, end: TnurccVertexEnd) -> Rc<RefCell<TnurccControlPoint<P>>> {
         use TnurccVertexEnd::*;
         match end {
             Origin => Rc::clone(&self.origin),
@@ -266,7 +267,7 @@ impl<P> TnurccEdge<P> {
     /// - `Some(side)` if `face` is connected to `self`.
     ///
     /// - `None` if `self` is not connected to `face`.
-    pub fn get_face_side(&self, face: Rc<RefCell<TnurccFace<P>>>) -> Option<TnurccFaceSide> {
+    pub fn face_side(&self, face: Rc<RefCell<TnurccFace<P>>>) -> Option<TnurccFaceSide> {
         if self
             .face_left
             .as_ref()
@@ -290,7 +291,7 @@ impl<P> TnurccEdge<P> {
     /// - `Some(face)` if the face on `side` exists.
     ///
     /// - `None` if the face on `side` does not exist.
-    pub fn get_face(&self, side: TnurccFaceSide) -> Option<Rc<RefCell<TnurccFace<P>>>> {
+    pub fn face_from_side(&self, side: TnurccFaceSide) -> Option<Rc<RefCell<TnurccFace<P>>>> {
         use TnurccFaceSide::*;
         match side {
             Left => self.face_left.as_ref().map(|f| Rc::clone(f)),
@@ -302,7 +303,11 @@ impl<P> TnurccEdge<P> {
     ///
     /// # Panics
     /// Panics if `self` has been incorrectly configured with `None` connections.
-    pub fn get_con_orentation(&self, other: Rc<RefCell<TnurccEdge<P>>>) -> Vec<TnurccConnection> {
+    #[allow(dead_code)]
+    pub fn connection_orientation(
+        &self,
+        other: Rc<RefCell<TnurccEdge<P>>>,
+    ) -> Vec<TnurccConnection> {
         self.connections
             .iter()
             .enumerate()
@@ -366,7 +371,7 @@ impl<P> TnurccEdge<P> {
         conjugate.borrow().dest.borrow_mut().incoming_edge = Some(Rc::clone(&conjugate));
 
         for con in [TnurccConnection::LeftAcw, TnurccConnection::RightCw] {
-            let other = e.borrow().get_connection(con);
+            let other = e.borrow().connection(con);
             TnurccEdge::connect(Rc::clone(&other), Rc::clone(&conjugate))
                 .map_err(|_| Error::TnurccMalformedFace)?;
         }
@@ -389,7 +394,7 @@ impl<P> TnurccEdge<P> {
     ///
     /// # Panics
     /// Panics if any borrow fails.
-    pub fn get_common_face(&self, other: Rc<RefCell<Self>>) -> Option<Rc<RefCell<TnurccFace<P>>>> {
+    pub fn common_face(&self, other: Rc<RefCell<Self>>) -> Option<Rc<RefCell<TnurccFace<P>>>> {
         let other = other.borrow();
 
         if let Some(ref first_left_face) = self.face_left {
@@ -443,7 +448,8 @@ impl<P> TnurccEdge<P> {
     ///
     /// # Panics
     /// Panics if any borrow fails.
-    pub fn get_common_point(
+    #[allow(dead_code)]
+    pub fn common_point(
         &self,
         other: Rc<RefCell<Self>>,
     ) -> Option<Rc<RefCell<TnurccControlPoint<P>>>> {
@@ -788,7 +794,7 @@ mod tests {
             // Check if the primary edge is connected to the secondary
             let primary_con_orientaion = primary_edge
                 .borrow()
-                .get_con_orentation(Rc::clone(&secondary_edge));
+                .connection_orientation(Rc::clone(&secondary_edge));
             assert_eq!(
                 primary_con_orientaion.len(),
                 1,
@@ -812,7 +818,7 @@ mod tests {
             // Check if the secondary edge is connected to the primary
             let secondary_con_orientaion = secondary_edge
                 .borrow()
-                .get_con_orentation(Rc::clone(&primary_edge));
+                .connection_orientation(Rc::clone(&primary_edge));
             assert_eq!(
                 secondary_con_orientaion.len(),
                 1,
@@ -933,7 +939,7 @@ mod tests {
             // Check if the primary edge is connected to the secondary
             let primary_con_orientaion = primary_edge
                 .borrow()
-                .get_con_orentation(Rc::clone(&secondary_edge));
+                .connection_orientation(Rc::clone(&secondary_edge));
             assert_eq!(
                 primary_con_orientaion.len(),
                 2,
@@ -958,7 +964,7 @@ mod tests {
             // Check if the secondary edge is connected to the primary
             let secondary_con_orientaion = secondary_edge
                 .borrow()
-                .get_con_orentation(Rc::clone(&primary_edge));
+                .connection_orientation(Rc::clone(&primary_edge));
             assert_eq!(
                 secondary_con_orientaion.len(),
                 2,
@@ -1035,8 +1041,8 @@ mod tests {
         .expect("Splitting is designed to succeed");
 
         // Get the new edge, other_left and other_right should be the same
-        let other_left = edge.borrow().get_connection(TnurccConnection::LeftAcw);
-        let other_right = edge.borrow().get_connection(TnurccConnection::RightCw);
+        let other_left = edge.borrow().connection(TnurccConnection::LeftAcw);
+        let other_right = edge.borrow().connection(TnurccConnection::RightCw);
 
         // Check that edge is correctly connected to an edge
         assert!(
@@ -1081,7 +1087,7 @@ mod tests {
                 .as_ref()
                 .unwrap()
                 .borrow()
-                .get_point_end(Rc::clone(&middle))
+                .point_end(Rc::clone(&middle))
                 .is_some(),
             "Middle's incomming edge is incorrect."
         );
@@ -1168,14 +1174,14 @@ mod tests {
         );
 
         // Get the new edge
-        let new_edge = edge.borrow().get_connection(TnurccConnection::LeftAcw);
+        let new_edge = edge.borrow().connection(TnurccConnection::LeftAcw);
 
         // Test that left_edge was reconnected to the new edge
         assert!(
             std::ptr::eq(
                 left_edge
                     .borrow()
-                    .get_connection(TnurccConnection::RightCw)
+                    .connection(TnurccConnection::RightCw)
                     .as_ref(),
                 new_edge.as_ref()
             ),
@@ -1186,7 +1192,7 @@ mod tests {
             std::ptr::eq(
                 right_edge
                     .borrow()
-                    .get_connection(TnurccConnection::LeftAcw)
+                    .connection(TnurccConnection::LeftAcw)
                     .as_ref(),
                 new_edge.as_ref()
             ),
@@ -1198,7 +1204,7 @@ mod tests {
                 right_edge.as_ref(),
                 new_edge
                     .borrow()
-                    .get_connection(TnurccConnection::RightCw)
+                    .connection(TnurccConnection::RightCw)
                     .as_ref()
             ),
             "Edge's right clockwise connection was not correctly transfered."
@@ -1209,7 +1215,7 @@ mod tests {
                 left_edge.as_ref(),
                 new_edge
                     .borrow()
-                    .get_connection(TnurccConnection::LeftAcw)
+                    .connection(TnurccConnection::LeftAcw)
                     .as_ref()
             ),
             "Edge's left anti-clockwise connection was not correctly transfered."

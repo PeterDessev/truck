@@ -170,62 +170,90 @@ the number of control points: {1}"
     #[error("The vector of control points and the one of weights have different length.")]
     DifferentLength,
 
+    /// Occurs when a control point is instructed to connect to another which is already connected
+    /// to a third control point in the specified direction.
     #[error("Cannot connect T-mesh control point to an existing connection.")]
     TmeshExistingConnection,
 
+    /// The control point is not a part of the current mesh. Typically returned when a control point is expected to be 
+    /// found at the other end of a connection, but one is not found.
     #[error("Cannot locate the desired control point in the T-mesh.")]
     TmeshControlPointNotFound,
 
+    /// A connection is either an Edge or a T-Junction and has no associated control point.
     #[error("T-mesh connection does not exist.")]
     TmeshConnectionNotFound,
 
+    /// A knot ratio specified for a connection split is not in the valid range.
     #[error("T-mesh knot ratios for new connections must be between 0.0 and 1.0.")]
     TmeshInvalidKnotRatio,
 
+    /// Asymetric in-code connection structures cannot be resolved and are indicative of larger errors in the program.
     #[error("T-mesh knot intervals on a connection do not match in both directions.")]
     TmeshConnectionInvalidKnotInterval,
 
-    #[error("An uknown T-mesh error occured, and you should not be seeing this message. Please contact the developers.")]
+    /// An error occured when previous error checking should have guaranteed succesfull execution.
+    #[error("An uknown T-mesh error occured, and you should not be seeing this message.")]
     TmeshUnkownError,
-
+    
+    /// An unrecoverable error occured which makes the mesh unusable, typically mapped from a different T-mesh error.
     #[error("The T-mesh is malformed and should no longer be used.")]
     TmeshMalformedMesh,
 
+    /// Rule 3: `P'` can only be inserted if `t1 = t2 = t4 = t5`. From \[Sederberg et al. 2003\].
     #[error("A knot could not be inserted into the mesh at the desired location without violating Rule 3")]
     TmeshKnotVectorsNotEqual,
 
-    #[error("A control point with the same knot coordinates already exists, try inserting manually")]
+    /// Local knot insertion cannot insert control points into places where they can only change the structure of the 
+    /// T-mesh, such as in the same parametric coordinate location as an existing control point.
+    #[error(
+        "A control point with the same knot coordinates already exists, try inserting manually"
+    )]
     TmeshExistingControlPoint,
 
+    /// The current control point being operated on is not a part of the mesh. Exists in tandem with `TmeshControlPointNotFound`
+    /// to differentiate between bad function parameters and meshes with malformed connections. 
     #[error("The control point passed does not belong to the current Tmesh")]
     TmeshForeignControlPoint,
 
+    /// Knot coordinates in a mesh are limited to the closed interval \[0.0, 1.0\]
     #[error("The control point being inserted is out of the bounds of the Tmesh")]
     TmeshOutOfBoundsInsertion,
 
+    /// Self-explanitory
     #[error("The two points are already connected")]
     TnurccExistingConnection,
 
+    /// Occurs when the sum of the knot intervals of two opposing edges of a face are not the same. Indicates an
+    /// error in the Tnurcc program logic and not any code using it, since the Tnurcc library ensures that all mesh
+    /// manipulations do not result in this issue. 
     #[error("A T-NURCC face has opposing edges with differing knot intervals")]
     TnurccNonRectangularFace,
 
+    /// Geometry tells us that a line segment must be bounded by exactly 2 points. Edges may contain multiple line segments.
+    /// This error indicates that the construction of the T-Nurcc
     #[error("A T-NURCC face edge must contain at least 2 control points")]
     TnurccIncompleteFaceEdge,
 
+    /// The definition for a face is so loose in order to allow for faster point-based iterative face construction. 
     #[error("A T-NURCC face must have at least two points and one edge defining it")]
     TnurccMalformedFace,
 
+    /// The tnurcc represents the geometry of the mesh using a winged edge data structure. Thus, edges are automatically 
+    /// connected, in part, by checking which face they share. If they share no faces, they cannot be connected, even
+    /// if they share a vertex. Similarly, if they do not share exactly 1 vertex, they cannot be connected. 
     #[error("Automatically connecting the two edges {0} and {1} would result in a bad topological state")]
     TnurccBadConnectionConditions(usize, usize),
 
+    /// A bad topological configuration was provided to the Tnurcc constructor, and thus a Tnurcc could not be constructed.
+    /// Specifically, a face was left undefined, resulting in an open Tnurcc, an illegal configuration for a Tnurcc.
     #[error("Missing face in T-NURCC constructor")]
     TnurccMissingFace,
 
-    #[error("An edge in T-NURCC constructor has been defined to have more than 2 edges.")]
+    /// A bad topological configuration was provided to the Tnurcc constructor, and thus a Tnurcc could not be constructed.
+    /// Specifically, an edge was stated to be lying on the seam of three faces, an illegal configuration for a Tnurcc.
+    #[error("An edge in T-NURCC constructor has been defined to have more than 2 faces.")]
     TnurccEdgeTrippleFace,
-    
-    // #[error("Tnurcc construction parameters are invalid")]
-    // TnurccInvalidConstructor,
 }
 
 #[test]
