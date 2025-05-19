@@ -5,6 +5,9 @@ impl<P> TnurccFace<P> {
     /// anti-clockwise order starting from the origin of `f`'s reference edge. Returns an empty vector
     /// if `f` does not have a reference `edge`.
     ///
+    /// # Borrows
+    /// Immutably borrows `f` and all edges which define the edge of `f`
+    /// 
     /// # Panics
     /// Panics if `f`'s reference `edge` does not reference `f` as a face on either side.
     pub fn get_boundry_verticies(f: Rc<RefCell<Self>>) -> Vec<Rc<RefCell<TnurccControlPoint<P>>>> {
@@ -35,6 +38,9 @@ impl<P> TnurccFace<P> {
     /// Returns a vector containing all the edges defining the border of the current face, in an
     /// anti-clockwise order starting from `f`'s reference edge. Returns an empty vector if `f`
     /// does not have a reference `edge`.
+    ///
+    /// # Borrows
+    /// Immutably borrows `f` and all edges which define the edge of `f`
     ///
     /// # Panics
     /// Panics if `f`'s reference `edge` does not reference `f` as a face on either side.

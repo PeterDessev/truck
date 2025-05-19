@@ -101,8 +101,6 @@ impl<P> Tmesh<P> {
     /// points that are a part of the faces on either side of the edge that connects `p` and the point located in
     /// the direction `connection_side`.
     ///
-    /// Mutably borrows `self.bezier_domains`
-    ///
     /// # Panics
     /// Panics if any borrow does not succeed.
     pub fn add_control_point(
@@ -860,7 +858,7 @@ impl<P> Tmesh<P>
 where
     P: ControlPoint<f64>,
 {
-    /// Attempts to insert a new control point between two existing control points using the technique form \[Sederberg et al. 2003\]
+    /// Attempts to insert a new control point between two existing control points using the technique from \[Sederberg et al. 2003\]
     /// called local knot insertion (LKI), returning the added control point if successful. In order to do so, the knot vectors perpandicular
     /// to the connection for two control points in both directions (including the control points which define the edge) must be equal.
     /// See the figure below for an example.
@@ -905,8 +903,6 @@ where
     /// - `TmeshMalformedMesh` if a knot vector was unable to be constructed for any point.
     ///
     /// - `TmeshKnotVectorsNotEqual` if the knot vectors perpandicular to `dir` are not all equal (Rule 3 \[Sederberg et al. 2003\]).
-    ///
-    /// - `TmeshForeignControlPoint` if `p` is not a control point in the T-mesh.
     ///
     /// - `TmeshConnectionInvalidKnotInterval` if the connection between `p` and the point in the direction `dir` does
     ///     not have the same knot interval in both directions.
@@ -1273,8 +1269,6 @@ where
     ///
     /// # Borrows
     /// Immutably borrows every control point in `self`.
-    ///
-    /// Mutably borrows `self.bezier_domains`.
     pub fn subs(&self, s: f64, t: f64) -> Result<P> {
         // Generate knot vectors  if stale
         if self.knot_vectors.borrow().is_none() {
@@ -1550,19 +1544,19 @@ impl<P> Tmesh<P>
 where
     P: Clone,
 {
-    /// Subdivides a mesh by inserting a new control point parametrically halfway between every pair of connected control points 
-    /// already present in the mesh. This includes any implicit edges created during the subdivision of the mesh. Thus, a 2x2 
-    /// mesh created with the `new` function will become a 3x3 mesh with a point in the center of the mesh. The cartesian coordinates 
-    /// of the new control points is determined with a caller-specified closure, `f`, which will be given the two control points 
-    /// which will be on either side of the new control point. The first point parameter passed to `f` will always be either the 
+    /// Subdivides a mesh by inserting a new control point parametrically halfway between every pair of connected control points
+    /// already present in the mesh. This includes any implicit edges created during the subdivision of the mesh. Thus, a 2x2
+    /// mesh created with the `new` function will become a 3x3 mesh with a point in the center of the mesh. The cartesian coordinates
+    /// of the new control points is determined with a caller-specified closure, `f`, which will be given the two control points
+    /// which will be on either side of the new control point. The first point parameter passed to `f` will always be either the
     /// left or bottom control point in a pair, depending on the edge being subdivided.
-    /// 
+    ///
     /// # Returns
-    /// - `TmeshConnectionInvalidKnotInterval` if a connection is found which has mismatched knot intervals 
+    /// - `TmeshConnectionInvalidKnotInterval` if a connection is found which has mismatched knot intervals
     ///     depending on which point in the connection is referenced.
     ///
     /// - `Ok()` if the mesh was successfully subdivided.
-    /// 
+    ///
     /// # Borrows
     /// Mutably borrows every control point in `self.control_points`.
     pub fn subdivide<F>(&mut self, f: F) -> Result<()>
@@ -1775,7 +1769,7 @@ where
     T: Debug + Clone,
 {
     /// Prints the knot vectors for every point in the mesh.
-    /// 
+    ///
     /// # Borrows
     /// Immutably borrows every point in `self.control_points`
     pub fn print_knot_vectors(&self) {

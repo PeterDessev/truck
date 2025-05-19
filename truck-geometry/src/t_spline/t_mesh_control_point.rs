@@ -102,7 +102,7 @@ impl<P> TmeshControlPoint<P> {
     ///     that is, if the point does not exist.)
     ///
     /// - `Ok` if the connection was successfully removed.
-    /// 
+    ///
     /// # Borrows
     /// The function must be able to mutably borrow the point self is connected to.
     pub fn remove_connection(&mut self, dir: TmeshDirection) -> Result<()> {
@@ -162,7 +162,7 @@ impl<P> TmeshControlPoint<P> {
     /// - `TmeshExistingControlPoint` if `point` and `other` are the same control point.
     ///
     /// - `Ok` if the connection was successfully created between the two points.
-    /// 
+    ///
     /// # Borrows
     /// `connect` borrows both `point` and `other` mutably.
     pub fn connect(
@@ -370,7 +370,7 @@ impl<P> TmeshControlPoint<P> {
     ///
     /// # Returns
     /// The point connected to `self`
-    /// 
+    ///
     /// # Panics
     /// If there is no point connected to self in direction `dir`.
     pub fn get_conected_point(

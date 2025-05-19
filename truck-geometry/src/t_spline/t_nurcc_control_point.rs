@@ -15,7 +15,7 @@ impl<P> TnurccControlPoint<P> {
     /// Returns a vector containing all edges connected to `p`. Returns an empty vector if `p` does
     /// not have an `incoming_edge`. Collects in an anti-clockwise fashion starting from `p`'s 
     /// reference `incoming_edge`.
-    /// 
+    ///
     /// # Panics
     /// Panics if `p`'s `incoming_edge` does not have `p` as an end.
     pub fn radial_edges(p: Rc<RefCell<TnurccControlPoint<P>>>) -> Vec<Rc<RefCell<TnurccEdge<P>>>> {

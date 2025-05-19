@@ -2,9 +2,9 @@ use super::*;
 use std::fmt;
 
 impl TnurccConnection {
-    /// Converts a `usize` to a `TnurccConnection`. Modulo's `i` by `4`, resulting in a lossy 
+    /// Converts a `usize` to a `TnurccConnection`. Modulo's `i` by `4`, resulting in a lossy
     /// conversion. Thus, the `From` trait has not been used.
-    /// 
+    ///
     /// # Panics
     /// Panics if `i % 4 >= 4` (impossible?).
     pub fn from_usize(i: usize) -> TnurccConnection {
@@ -17,7 +17,6 @@ impl TnurccConnection {
         }
     }
 }
-
 
 impl fmt::Display for TnurccConnection {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

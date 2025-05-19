@@ -4,7 +4,7 @@
 //! curve or T-NURCC curve, so the semantic distinction is omitted
 //!
 //! # Bibliography:
-//! - Sederberg, Thomas & Zheng, Jianmin & Sewell, David & Sabin, Malcolm. (1999).
+//! - Sederberg, Thomas & Zheng, Jianmin & Sewell, David & Sabin, Malcolm. (1998).
 //!     *Non-Uniform Recursive Subdivision Surfaces*. Proceedings of the 25th Annual
 //!     Conference on Computer Graphics and Interactive Techniques, SIGGRAPH 1998.
 //!     10.1145/280814.280942.
@@ -18,12 +18,24 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use truck_base::cgmath64::control_point::ControlPoint;
 
+/// The compound type which defines a connection within a tmesh.
+/// The first element of the tuple is the (optional) point the connection interfaces to.
+/// The second element of the tuple is the knot weight of the connection.
 pub type TmeshConnection<P> = (Option<Rc<RefCell<TmeshControlPoint<P>>>>, f64);
 
 #[derive(Clone, Copy, PartialEq, Debug)]
+
+/// Describes the type of connections a Tmesh may have, and thus the expected structure of the
+/// layout of the corresponding TmeshConnection type.
 pub enum TmeshConnectionType {
+    /// The connection is a standard connection with a control point and a weight associated with it.
+    /// The connection must have a `some(TmeshControlPoint)` and the weight is not arbitrary.
     Point,
+    /// The connection is an edge connection with no associated control point, but an associated weight.
+    /// The connection must have a `none` control point and the weight is not arbitrary.
     Edge,
+    /// The connection is void, there is no associated control point or weight.
+    /// The connection must have a `none` control point and the weight is arbitrary.
     Tjunction,
 }
 /// # T-mesh control point
@@ -63,9 +75,13 @@ pub struct Tmesh<P> {
 /// A C-style enum designed to enforce T-mesh control point directionality.
 #[derive(Clone, PartialEq, Debug, Copy)]
 pub enum TmeshDirection {
+    /// The `+v` parametric direction
     Up = 0,
+    /// The `+u` parametric direction
     Right = 1,
+    /// The `-v` parametric direction
     Down = 2,
+    /// The `-u` parametric direction
     Left = 3,
 }
 
@@ -136,7 +152,7 @@ struct TnurccEdge<P> {
 
 /// # T-NURCC
 ///
-/// Described in \[Sederberg et al. 2003\], building on material from \[Sederberg et al. 1999\].
+/// Described in \[Sederberg et al. 2003\], building on material from \[Sederberg et al. 1998\].
 #[derive(Debug)]
 pub struct Tnurcc<P> {
     edges: Vec<Rc<RefCell<TnurccEdge<P>>>>,

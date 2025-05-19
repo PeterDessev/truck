@@ -241,6 +241,20 @@ impl<P> Tnurcc<P>
 where
     P: ControlPoint<f64>,
 {
+    /// Performs the global subdivide algorithm required by \[Sederberg et al. 2003\] and described
+    /// in \[Sederberg et al. 1998\], dubbed "refinement".
+    /// 
+    /// # Returns
+    /// - `Ok(())` on succesfull subdivision.
+    /// - `TnurccMalformedFace` if boundary vertecies for a face cannot be collected.
+    /// 
+    /// # Panics
+    /// - If any borrow fails.
+    /// - If any reference geometry does not correctly point to the object it is referencing.
+    /// - If any new connections or edge splits fail.
+    /// 
+    /// # Borrows
+    /// Mutably borrows `self.edges`, `self.control_points`, and `self.faces`, as well as all elements contained within.
     pub fn global_subdivide(&mut self) -> Result<()> {
         use TnurccConnection::*;
         let mut face_points = Vec::with_capacity(self.faces.len());
@@ -325,9 +339,9 @@ where
         }
 
         // Compute the location of the new point which splits every edge in mesh
-        // (Equation 13  in \[Sederberg et al. 1999\])
+        // (Equation 13  in \[Sederberg et al. 1998\])
         for edge in self.edges.iter() {
-            // Equivalen to F_{ij} in Equation 13 of \[Sederberg et al. 1999\]
+            // Equivalen to F_{ij} in Equation 13 of \[Sederberg et al. 1998\]
             let f_od = face_points[edge
                 .borrow()
                 .face_left
@@ -335,7 +349,7 @@ where
                 .expect("All edges should have faces on both sides")
                 .borrow()
                 .index];
-            // Equivalen to F_{ji} in Equation 13 of \[Sederberg et al. 1999\]
+            // Equivalen to F_{ji} in Equation 13 of \[Sederberg et al. 1998\]
             let f_do = face_points[edge
                 .borrow()
                 .face_right
@@ -344,7 +358,7 @@ where
                 .borrow()
                 .index];
 
-            // Denominator of equation 14 in \[Sederberg et al. 1999\]
+            // Denominator of equation 14 in \[Sederberg et al. 1998\]
             let a_denom: f64 = (0..4)
                 .map(|n| {
                     edge.borrow()
@@ -355,7 +369,7 @@ where
                 .sum::<f64>()
                 * 2.0;
 
-            // Equation 14 in \[Sederberg et al. 1999\] for alpha_{ij}
+            // Equation 14 in \[Sederberg et al. 1998\] for alpha_{ij}
             // TODO: Check that the TnurccConnection parity is correct (L/R)
             let a_od = {
                 if a_denom.so_small() {
@@ -368,7 +382,7 @@ where
                         / a_denom
                 }
             };
-            // Equation 14 in \[Sederberg et al. 1999\] for alpha_{ji}
+            // Equation 14 in \[Sederberg et al. 1998\] for alpha_{ji}
             // TODO: Check that the TnurccConnection parity is correct (L/R)
             let a_do = {
                 if a_denom.so_small() {
@@ -381,7 +395,7 @@ where
                         / a_denom
                 }
             };
-            // Equation 15 in \[Sederberg et al. 1999\]
+            // Equation 15 in \[Sederberg et al. 1998\]
             let m: P = {
                 let num_dest_sum = edge.borrow().knot_interval
                     + nth_acw_int(Rc::clone(&edge), Rc::clone(&edge.borrow().origin), 2)
@@ -408,7 +422,7 @@ where
         }
 
         // Compute the new location of every vertex in the mesh
-        // (Equation 16  in \[Sederberg et al. 1999\])
+        // (Equation 16  in \[Sederberg et al. 1998\])
         for vertex in self.control_points.iter() {
             let p_naught = vertex.borrow().point.clone();
             let valence = vertex.borrow().valence as f64;
@@ -423,11 +437,11 @@ where
             radial_edges.push(Rc::clone(&radial_edges[0]));
 
             // Group radial edges into windows of 2. This is not strictly nesessary for the calculations
-            // (in \[Sederberg et al. 1999\] they do not do this), however, it makes aquiring the radial
+            // (in \[Sederberg et al. 1998\] they do not do this), however, it makes aquiring the radial
             // faces around the vertex much easier, as the common face between two edges can be used, and
             // then the first edge in the window will always be the "actionable" edge which is used for
-            // the equations specified in \[Sederberg et al. 1999\]. The accumulator variable is a tuple
-            // containing the numerator and denominator from equation 16 in \[Sederberg et al. 1999\],
+            // the equations specified in \[Sederberg et al. 1998\]. The accumulator variable is a tuple
+            // containing the numerator and denominator from equation 16 in \[Sederberg et al. 1998\],
             // respectively, sans the integer multiples 3 and n.
             let factional_components =
                 radial_edges
@@ -437,16 +451,16 @@ where
                             .borrow()
                             .get_common_face(Rc::clone(&win[1]))
                             .expect("Adjacent edges should share a face.");
-                        // Get the face point calculated in equation 11 in \[Sederberg et al. 1999\]
+                        // Get the face point calculated in equation 11 in \[Sederberg et al. 1998\]
                         let f_point = face_points[face.borrow().index].clone();
-                        // Equation 18 in \[Sederberg et al. 1999\]. Radial faces are in ACW order, so win[0] is the
+                        // Equation 18 in \[Sederberg et al. 1998\]. Radial faces are in ACW order, so win[0] is the
                         // edge from which the next ACW edge is retrieved, and vice-versa
                         let f_scalar = nth_acw_int(Rc::clone(&win[0]), Rc::clone(&vertex), 1)
                             * nth_cw_int(Rc::clone(&win[1]), Rc::clone(&vertex), 1);
 
-                        // Get the edge point calculated in equation 15 in \[Sederberg et al. 1999\]
+                        // Get the edge point calculated in equation 15 in \[Sederberg et al. 1998\]
                         let m_point = edge_points[win[0].borrow().index].clone();
-                        // Equation 17 in \[Sederberg et al. 1999\]
+                        // Equation 17 in \[Sederberg et al. 1998\]
                         let m_scalar = 0.5
                             * (nth_acw_int(Rc::clone(&win[0]), Rc::clone(&vertex), 1)
                                 + nth_cw_int(Rc::clone(&win[0]), Rc::clone(&vertex), 1))
@@ -459,7 +473,7 @@ where
                         )
                     });
 
-            // Equation 16 in \[Sederberg et al. 1999\], with help from equation 19 from the same.
+            // Equation 16 in \[Sederberg et al. 1998\], with help from equation 19 from the same.
             vertex.borrow_mut().point = if factional_components.1.so_small() {
                 p_naught
             } else {
@@ -469,7 +483,7 @@ where
             };
         }
 
-        // Calculate the new know spacings (Section 4.2.1 in \[Sederberg et al. 1999\]) and create the new
+        // Calculate the new know spacings (Section 4.2.1 in \[Sederberg et al. 1998\]) and create the new
         // edges and faces which complete the subdivision.
         // let original_vertex_count = self.control_points.len();
         for (face_i, f_p) in face_points.into_iter().enumerate() {
@@ -639,7 +653,7 @@ where
                 };
 
                 // Knot interval of face connecting edge point to face point.
-                // Figure 10 in \[Sederberg et al. 1999\]
+                // Figure 10 in \[Sederberg et al. 1998\]
                 let knot_interval = {
                     // We unfourtunatly require the knot interval of the original (unsplit) previous and next edge.
                     // However, since the knot interval is evenly split, if we know an edge is split, we can just
