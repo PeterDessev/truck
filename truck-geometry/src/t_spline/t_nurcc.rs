@@ -44,10 +44,10 @@ where
     ///
     /// Notice that the knot interval for points in the connections vector is the relative knot distance between the point it is
     /// tuple'd with and the point *prior* to it. The above face vector is one of four possible identical face elements, where
-    /// the other three are the rotations of the edge elements in the face. The edges are also ordered in an anti-clockwise.
+    /// the other three are the rotations of the edge elements in the face. The edges are also ordered in an anti-clockwise fashion.
     ///
     /// It is mandatory that all faces have the same knot interval spanning opposing edges. In the example above, that means that the
-    /// "top" and "bottom" face must have the same total knot interval, and the same goes for the "left" and "right". In short, all faces
+    /// "top" and "bottom" edge must have the same total knot interval, and the same goes for the "left" and "right". In short, all faces
     /// must be rectangular in knot-space (parametrically rectangular).
     ///
     /// # Returns
@@ -96,7 +96,7 @@ where
                 .collect::<(Vec<_>, Vec<_>)>();
 
             // The last connection is between the first and last element, which is included in this by adding the
-            // first control point to the end of the vector o that a window will pick it up
+            // first control point to the end of the vector so that a window will pick it up
             connections.push(connections[0]);
 
             // Collect all edges described by face (This is such a painfully O(N*M) algorithm I don't
@@ -243,16 +243,16 @@ where
 {
     /// Performs the global subdivide algorithm required by \[Sederberg et al. 2003\] and described
     /// in \[Sederberg et al. 1998\], dubbed "refinement".
-    /// 
+    ///
     /// # Returns
     /// - `Ok(())` on succesfull subdivision.
     /// - `TnurccMalformedFace` if boundary vertecies for a face cannot be collected.
-    /// 
+    ///
     /// # Panics
     /// - If any borrow fails.
     /// - If any reference geometry does not correctly point to the object it is referencing.
     /// - If any new connections or edge splits fail.
-    /// 
+    ///
     /// # Borrows
     /// Mutably borrows `self.edges`, `self.control_points`, and `self.faces`, as well as all elements contained within.
     pub fn global_subdivide(&mut self) -> Result<()> {
@@ -741,49 +741,28 @@ mod tests {
         let points = vec![
             Point3::from((0.0, 0.0, 0.0)), // 0
             Point3::from((0.0, 0.0, 1.0)), // 1
-            Point3::from((0.0, 1.0, 1.0)), // 2
-            Point3::from((0.0, 1.0, 0.0)), // 3
-            Point3::from((1.0, 0.0, 0.0)), // 4
-            Point3::from((1.0, 0.0, 1.0)), // 5
+            Point3::from((1.0, 0.0, 1.0)), // 2
+            Point3::from((1.0, 0.0, 0.0)), // 3
+            Point3::from((0.0, 1.0, 0.0)), // 4
+            Point3::from((0.0, 1.0, 1.0)), // 5
             Point3::from((1.0, 1.0, 1.0)), // 6
             Point3::from((1.0, 1.0, 0.0)), // 7
         ];
 
         let faces = vec![
             [
-                // Left
-                (0, vec![(1, 1.0)]),
-                (1, vec![(2, 1.0)]),
-                (2, vec![(3, 1.0)]),
-                (3, vec![(0, 1.0)]),
-            ],
-            [
                 // Front
-                (0, vec![(4, 1.0)]),
-                (4, vec![(5, 1.0)]),
-                (5, vec![(1, 1.0)]),
+                (0, vec![(3, 1.0)]),
+                (3, vec![(2, 1.0)]),
+                (2, vec![(1, 1.0)]),
                 (1, vec![(0, 1.0)]),
             ],
             [
-                // Bottom
-                (0, vec![(3, 1.0)]),
-                (3, vec![(7, 1.0)]),
-                (7, vec![(4, 1.0)]),
-                (4, vec![(0, 1.0)]),
-            ],
-            [
-                // Right
-                (4, vec![(7, 1.0)]),
-                (7, vec![(6, 1.0)]),
-                (6, vec![(5, 1.0)]),
+                // Left
+                (0, vec![(1, 1.0)]),
+                (1, vec![(5, 1.0)]),
                 (5, vec![(4, 1.0)]),
-            ],
-            [
-                // Back
-                (3, vec![(2, 1.0)]),
-                (2, vec![(6, 1.0)]),
-                (6, vec![(7, 1.0)]),
-                (7, vec![(3, 1.0)]),
+                (4, vec![(0, 1.0)]),
             ],
             [
                 // Top
@@ -792,13 +771,208 @@ mod tests {
                 (6, vec![(5, 1.0)]),
                 (5, vec![(1, 1.0)]),
             ],
+            [
+                // Back
+                (4, vec![(5, 1.0)]),
+                (5, vec![(6, 1.0)]),
+                (6, vec![(7, 1.0)]),
+                (7, vec![(4, 1.0)]),
+            ],
+            [
+                // Right
+                (2, vec![(3, 1.0)]),
+                (3, vec![(7, 1.0)]),
+                (7, vec![(6, 1.0)]),
+                (6, vec![(2, 1.0)]),
+            ],
+            [
+                // Bottom
+                (0, vec![(4, 1.0)]),
+                (4, vec![(7, 1.0)]),
+                (7, vec![(3, 1.0)]),
+                (3, vec![(0, 1.0)]),
+            ],
         ];
 
         Tnurcc::try_new(points, faces)
     }
 
+    fn verify_tnurcc_control_points(t: &Tnurcc<Point3>) {
+        for (i, p) in t.control_points.iter().enumerate() {
+            // Incoming edge of the point
+            let point_edge = Rc::clone(
+                p.borrow()
+                    .incoming_edge
+                    .as_ref()
+                    .expect("All points should have an incoming edge"),
+            );
+
+            // Point-based iter will rotate around the current control point
+            // Incedentally verifies that the control point is referenced by the edge
+            let iter = TnurccAcwPointIter::from_edge(
+                Rc::clone(&point_edge),
+                point_edge
+                    .borrow()
+                    .point_end(Rc::clone(&p))
+                    .expect("Point should be a side of its incoming edge"),
+            );
+            let next = iter
+                .last()
+                .expect("Point edge-rotation iterator should wrap around and end.");
+
+            // Assert the next acw edge (from the last one returned by the iter)
+            // is the same edge as the one it started at
+            let next_point_end = next
+                .borrow()
+                .point_end(Rc::clone(&p))
+                .expect("Edges reached through a point iter should be connected to that point");
+            let final_edge = next.borrow().acw_edge_from_end(next_point_end);
+            assert!(
+                std::ptr::eq(final_edge.as_ref(), point_edge.as_ref()),
+                "Iter does not rotate around point correctly. Reached {}, expected {}",
+                final_edge.borrow().index,
+                point_edge.borrow().index,
+            );
+
+            // Calculate the anti-clockwise valence of the point and verify it matches the
+            // recorded valence of the point.
+            let iter = TnurccAcwPointIter::from_edge(
+                Rc::clone(&point_edge),
+                point_edge
+                    .borrow()
+                    .point_end(Rc::clone(&p))
+                    .expect("Point should be a side of its incoming edge"),
+            );
+            let acw_calc_valence = iter.count();
+            assert!(
+                acw_calc_valence == p.borrow().valence,
+                "Anti-clockwise valence does not match recorded valence"
+            );
+
+            // Check that the index field matches the index of the point
+            assert!(
+                p.borrow().index == i,
+                "Point index field must match index in mesh points array"
+            );
+        }
+    }
+
+    fn verify_tnurcc_edges(t: &Tnurcc<Point3>) {
+        for (i, e) in t.edges.iter().enumerate() {
+            // Check index field
+            assert!(
+                i == e.borrow().index,
+                "Tnurcc edge index field must be equal to edge index in edge array"
+            );
+
+            let common_faces = [
+                TnurccFaceSide::Left,
+                TnurccFaceSide::Left,
+                TnurccFaceSide::Right,
+                TnurccFaceSide::Right,
+            ];
+
+            let common_points = [
+                [TnurccVertexEnd::Dest, TnurccVertexEnd::Origin],
+                [TnurccVertexEnd::Origin, TnurccVertexEnd::Dest],
+                [TnurccVertexEnd::Dest, TnurccVertexEnd::Origin],
+                [TnurccVertexEnd::Origin, TnurccVertexEnd::Dest],
+            ];
+
+            // Check connected edges
+            for (dir_index, &dir) in [
+                TnurccConnection::LeftAcw,
+                TnurccConnection::LeftCw,
+                TnurccConnection::RightAcw,
+                TnurccConnection::RightCw,
+            ]
+            .iter()
+            .enumerate()
+            {
+                // Get edge in the direction under investigation
+                let con = e.borrow().connection(dir);
+
+                // Check the face between the two is the same and correct
+                let common_face = e
+                    .borrow()
+                    .common_face(Rc::clone(&con))
+                    .expect("Connected edges must have a common face between them.");
+                assert!(std::ptr::eq(
+                    common_face.as_ref(),
+                    e.borrow()
+                        .face_from_side(common_faces[dir_index])
+                        .expect("Tnurcc must be closed on all edges")
+                        .as_ref()
+                ));
+
+                // Check that the point between them is the same and correct
+                let common_point = e
+                    .borrow()
+                    .common_point(Rc::clone(&con))
+                    .expect("Connected edges must have a common point between them.");
+
+                // In order to check to make sure that the common points is the correct one, 
+                // both the connection and orientation of the connected edge relative to the
+                // common face needs to be computed in order to know what the relative
+                // orientation of the two edges is to each other.
+                let other_common_point = con.borrow().point_at_end(
+                    common_points[dir as usize][con
+                        .borrow()
+                        .face_side(Rc::clone(&common_face))
+                        .expect("Common face must be a side on con")
+                        as usize],
+                );
+
+                assert!(
+                    std::ptr::eq(common_point.as_ref(), other_common_point.as_ref()),
+                    "Connected edges {} and {} do not share the correct point.",
+                    e.borrow().index,
+                    con.borrow().index
+                );
+            }
+        }
+    }
+
+    fn verify_tnurcc_faces(t: &Tnurcc<Point3>) {
+        for face in t.faces.iter() {
+            // Get reference edge for face
+            let face_edge = Rc::clone(
+                face.borrow()
+                    .edge
+                    .as_ref()
+                    .expect("All faces should have a reference edge in T-NURCC"),
+            );
+
+            // Assert the next acw edge (from the last one returned by the iter)
+            // is the same edge as the one it started at
+            let last_edge = TnurccAcwFaceIter::try_from_edge(
+                Rc::clone(&face_edge),
+                face_edge.borrow().face_side(Rc::clone(face)).unwrap(),
+            )
+            .expect("Prevously tested assertion.")
+            .last()
+            .expect("Iter of size greater than 0 should have a last element");
+
+            // Assert that the face is closed (The next edge around the face after exhausting the iterator
+            // should be the original reference edge)
+            let next_face_side = last_edge
+                .borrow()
+                .face_side(Rc::clone(&face))
+                .expect("Edges reached through a face iter should be connected to that face");
+            let final_edge = last_edge.borrow().acw_edge_from_side(next_face_side);
+            assert!(
+                std::ptr::eq(final_edge.as_ref(), face_edge.as_ref()),
+                "Iter does not rotate around face correctly. Reached {}, expected {}",
+                final_edge.borrow().index,
+                face_edge.borrow().index,
+            );
+        }
+    }
+
     #[test]
-    fn t_nurcc_test_make_cube_faces() {
+    fn t_nurcc_test_make_cube_euclidiean_geometry() {
+        // Sanity check that the cube is (probably) actually a cube
+
         let surface = make_cube();
         assert!(
             surface.is_ok(),
@@ -818,68 +992,33 @@ mod tests {
 
     #[test]
     fn t_nurcc_test_cube_control_point_properties() {
-        let surface = make_cube().unwrap();
+        let t = make_cube().expect("Cube should be succesfully created");
 
-        for p in surface.control_points.iter() {
-            // Check valence
+        verify_tnurcc_control_points(&t);
+
+        for p in t.control_points.iter() {
+            // Check valencies
             assert_eq!(
                 p.borrow().valence,
                 3,
                 "Point {} does not have a valence of 3.",
-                p.borrow().index
-            );
-
-            // Incomin edge of the point
-            let point_edge = Rc::clone(
-                p.borrow()
-                    .incoming_edge
-                    .as_ref()
-                    .expect("All points should have an incoming edge"),
-            );
-
-            // Point-based iter will rotate around the current control point
-            let mut iter = TnurccAcwPointIter::from_edge(
-                Rc::clone(&point_edge),
-                point_edge
-                    .borrow()
-                    .point_end(Rc::clone(&p))
-                    .expect("Point should be a side of its incoming edge"),
-            );
-            let mut next = None;
-
-            // Point is valence 3, so there will be three points
-            for _ in 0..3 {
-                next = iter.next();
-            }
-
-            // Assert there are no more than 3 edges to rotate around
-            let next = next.expect("Valence 3 point iters should have 3 incoming edges");
-            assert!(
-                iter.next().is_none(),
-                "Point {} is part of an edge loop which does not close correctly. Reached {}",
                 p.borrow().index,
-                next.borrow().index
-            );
-
-            // Assert the next acw edge (from the last one returned by the iter)
-            // is the same edge as the one it started at
-            let next_point_end = next
-                .borrow()
-                .point_end(Rc::clone(&p))
-                .expect("Edges reached through a point iter should be connected to that point");
-            let final_edge = next.borrow().acw_edge_from_end(next_point_end);
-            assert!(
-                std::ptr::eq(final_edge.as_ref(), point_edge.as_ref()),
-                "Iter does not rotate around point correctly. Reached {}, expected {}",
-                final_edge.borrow().index,
-                point_edge.borrow().index,
             );
         }
     }
 
     #[test]
+    fn t_nurcc_test_cube_edge_properties() {
+        let t = make_cube().expect("Cube should be succesfully created");
+
+        verify_tnurcc_edges(&t);
+    }
+
+    #[test]
     fn t_nurcc_test_cube_face_properties() {
         let surface = make_cube().unwrap();
+
+        verify_tnurcc_faces(&surface);
 
         for face in surface.faces.iter() {
             let face_edge = Rc::clone(
@@ -889,48 +1028,32 @@ mod tests {
                     .expect("All faces should have a reference edge in T-NURCC"),
             );
 
-            let mut iter = TnurccAcwFaceIter::try_from_edge(
+            // Assert that each face has four edges
+            let edge_count = TnurccAcwFaceIter::try_from_edge(
                 Rc::clone(&face_edge),
                 face_edge.borrow().face_side(Rc::clone(face)).unwrap(),
             )
-            .expect("face_edge should have Some(face) because it was cloned from face");
-            let mut next = None;
+            .expect("face_edge should have Some(face) because it was cloned from face")
+            .count();
 
-            for _ in 0..4 {
-                next = iter.next();
-            }
-
-            // Assert that each face has four edges
-            let next = next.expect("Rectangular faces should have 4 faces to rotate around.");
             assert!(
-                iter.next().is_none(),
-                "Edge {} is part of a non-square face. Reached {}.",
-                face_edge.borrow().index,
-                next.borrow().index
-            );
-
-            // Assert the next acw edge (from the last one returned by the iter)
-            // is the same edge as the one it started at
-            let next_face_side = next
-                .borrow()
-                .face_side(Rc::clone(&face))
-                .expect("Edges reached through a face iter should be connected to that face");
-            let final_edge = next.borrow().acw_edge_from_side(next_face_side);
-            assert!(
-                std::ptr::eq(final_edge.as_ref(), face_edge.as_ref()),
-                "Iter does not rotate around face correctly. Reached {}, expected {}",
-                final_edge.borrow().index,
-                face_edge.borrow().index,
+                edge_count == 4,
+                "Rectangular faces should have 4 faces to rotate around"
             );
         }
     }
 
-    #[test]
-    fn t_nurcc_test_subdivide() {
+    fn t_nurcc_subdivded_cube() -> Tnurcc<Point3> {
         let mut surface = make_cube().unwrap();
-        let res = surface.global_subdivide();
+        surface
+            .global_subdivide()
+            .expect("Subdivision of cube is possible");
+        surface
+    }
 
-        assert!(!res.is_err(), "Subivide should complete succesfully");
+    #[test]
+    fn t_nurcc_test_subdivide_euclidean_geometry() {
+        let surface = t_nurcc_subdivded_cube();
 
         // Check basic geometric properties
         assert_eq!(
@@ -946,58 +1069,22 @@ mod tests {
             surface.edges.len(),
             (12 * 2 + 4 * 6),
             "Number of edges after subdivide should be the sum of twice the count of edges prior subdividing and the sum of the number of edges on each face for each face");
+    }
 
-        // Check indicies
-        assert!(
-            surface
-                .faces
-                .iter()
-                .all(|f| std::ptr::eq(f.as_ref(), surface.faces[f.borrow().index].as_ref())),
-            "Indicies for each face should match their assigned index"
-        );
-        assert!(
-            surface.control_points.iter().all(|c| std::ptr::eq(
-                c.as_ref(),
-                surface.control_points[c.borrow().index].as_ref()
-            )),
-            "Indicies for each control point should match their assigned index"
-        );
-        assert!(
-            surface
-                .edges
-                .iter()
-                .all(|e| std::ptr::eq(e.as_ref(), surface.edges[e.borrow().index].as_ref())),
-            "Indicies for each edge should match their assigned index"
-        );
+    #[test]
+    fn t_nurcc_test_subdivide_edges() {
+        let surface = t_nurcc_subdivded_cube();
 
-        // Make sure that edge assignments for points and faces are correct
-        let poorly_referenced_surfaces = surface
-            .faces
-            .iter()
-            .filter(|f| {
-                !(f.borrow()
-                    .edge
-                    .as_ref()
-                    .is_some_and(|e| e.borrow().face_side(Rc::clone(&f)).is_some()))
-            })
-            .map(|f| Rc::clone(&f))
-            .collect::<Vec<_>>();
-        assert!(poorly_referenced_surfaces.len() == 0, "All faces should have been assigned an edge on its perimeter. {} faces do not follow this", poorly_referenced_surfaces.len());
+        verify_tnurcc_edges(&surface);
+    }
 
-        let poorly_referenced_points = surface
-            .control_points
-            .iter()
-            .filter(|c| {
-                !(c.borrow()
-                    .incoming_edge
-                    .as_ref()
-                    .is_some_and(|e| e.borrow().point_end(Rc::clone(&c)).is_some()))
-            })
-            .map(|c| Rc::clone(&c))
-            .collect::<Vec<_>>();
-        assert!(poorly_referenced_points.len() == 0, "All control points should have been assigned an incoming edge. {} points do not follow this", poorly_referenced_points.len());
+    #[test]
+    fn t_nurcc_test_subdivide_faces() {
+        let surface = t_nurcc_subdivded_cube();
 
-        // Make sure the faces are well formed
+        verify_tnurcc_faces(&surface);
+
+        // Make sure the faces are well formed (a little redundant but better be thorough)
         surface.faces.iter().for_each(|f| {
             let start_edge = Rc::clone(
                 f.borrow()
@@ -1058,5 +1145,12 @@ mod tests {
                 f.borrow().index
             );
         });
+    }
+
+    #[test]
+    fn t_nurcc_test_subdivide_points() {
+        let surface = t_nurcc_subdivded_cube();
+
+        verify_tnurcc_control_points(&surface);
     }
 }
