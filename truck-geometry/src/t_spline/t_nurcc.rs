@@ -1170,4 +1170,13 @@ mod tests {
 
         verify_tnurcc_control_points(&surface);
     }
+
+    #[test]
+    fn t_nurcc_test_double_subdivide() {
+        let mut surface = t_nurcc_subdivded_cube();
+        surface.global_subdivide().expect("Double subdivide should succeed.");
+        verify_tnurcc_control_points(&surface);
+        verify_tnurcc_edges(&surface);
+        verify_tnurcc_faces(&surface);
+    }
 }
