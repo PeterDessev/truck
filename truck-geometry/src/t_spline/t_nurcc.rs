@@ -807,12 +807,10 @@ mod tests {
     fn verify_tnurcc_control_points(t: &Tnurcc<Point3>) {
         for (i, p) in t.control_points.iter().enumerate() {
             // Incoming edge of the point
-            let point_edge = Rc::clone(
-                p.borrow()
-                    .incoming_edge
-                    .as_ref()
-                    .expect("All points should have an incoming edge"),
-            );
+            let point_edge = Rc::clone(p.borrow().incoming_edge.as_ref().expect(&format!(
+                "Point {} should have an incoming edge",
+                p.borrow().index,
+            )));
 
             // Point-based iter will rotate around the current control point
             // Incedentally verifies that the control point is referenced by the edge
@@ -821,22 +819,27 @@ mod tests {
                 point_edge
                     .borrow()
                     .point_end(Rc::clone(&p))
-                    .expect("Point should be a side of its incoming edge"),
+                    .expect(&format!(
+                        "Point {} should be a side of its incoming edge",
+                        p.borrow().index,
+                    )),
             );
-            let next = iter
-                .last()
-                .expect("Point edge-rotation iterator should wrap around and end.");
+            let next = iter.last().expect(&format!(
+                "Point {} edge-rotation iterator should wrap around and end.",
+                p.borrow().index,
+            ));
 
             // Assert the next acw edge (from the last one returned by the iter)
             // is the same edge as the one it started at
-            let next_point_end = next
-                .borrow()
-                .point_end(Rc::clone(&p))
-                .expect("Edges reached through a point iter should be connected to that point");
+            let next_point_end = next.borrow().point_end(Rc::clone(&p)).expect(&format!(
+                "Edges reached through point {} iter should be connected to that point",
+                p.borrow().index,
+            ));
             let final_edge = next.borrow().acw_edge_from_end(next_point_end);
             assert!(
                 std::ptr::eq(final_edge.as_ref(), point_edge.as_ref()),
-                "Iter does not rotate around point correctly. Reached {}, expected {}",
+                "Iter does not rotate around point {} correctly. Reached {}, expected {}",
+                p.borrow().index,
                 final_edge.borrow().index,
                 point_edge.borrow().index,
             );
@@ -848,18 +851,25 @@ mod tests {
                 point_edge
                     .borrow()
                     .point_end(Rc::clone(&p))
-                    .expect("Point should be a side of its incoming edge"),
+                    .expect(&format!(
+                        "Point {} should be a side of its incoming edge",
+                        p.borrow().index,
+                    )),
             );
             let acw_calc_valence = iter.count();
             assert!(
                 acw_calc_valence == p.borrow().valence,
-                "Anti-clockwise valence does not match recorded valence"
+                "Point {} anti-clockwise valence {} does not match recorded valence {}",
+                p.borrow().index,
+                acw_calc_valence,
+                p.borrow().valence,
             );
 
             // Check that the index field matches the index of the point
             assert!(
                 p.borrow().index == i,
-                "Point index field must match index in mesh points array"
+                "Point {} index field must match index in mesh points array",
+                p.borrow().index,
             );
         }
     }
@@ -918,7 +928,7 @@ mod tests {
                     .common_point(Rc::clone(&con))
                     .expect("Connected edges must have a common point between them.");
 
-                // In order to check to make sure that the common points is the correct one, 
+                // In order to check to make sure that the common points is the correct one,
                 // both the connection and orientation of the connected edge relative to the
                 // common face needs to be computed in order to know what the relative
                 // orientation of the two edges is to each other.
