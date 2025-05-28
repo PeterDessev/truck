@@ -359,6 +359,11 @@ impl<P> TnurccEdge<P> {
             Rc::clone(&e.borrow().dest),
         );
 
+        // Creating conjugate increases the valence of dest, but splitting the edge
+        // does not increase the valence of any point but p. Thus, decrement the valence
+        // to keep the recorded valence correct.
+        e.borrow().point_at_end(TnurccVertexEnd::Dest).borrow_mut().valence -= 1;
+
         conjugate.borrow_mut().face_right = e.borrow().face_right.as_ref().map(|r| Rc::clone(r));
         conjugate.borrow_mut().face_left = e.borrow().face_left.as_ref().map(|r| Rc::clone(r));
 

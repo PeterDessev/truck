@@ -707,6 +707,13 @@ where
                 )
                 .expect("Radial edges should always succesfully connect between each other");
 
+                // Update valence of edge point
+                edge.borrow()
+                    .common_point(Rc::clone(&edge_conjugates[perim_i]))
+                    .expect("Edges should have a common point with their split conjugates")
+                    .borrow_mut()
+                    .valence += 1;
+
                 // This will be overidden several times, not sure exactly how to deal with it without crying...
                 f_cp.borrow_mut()
                     .incoming_edge
