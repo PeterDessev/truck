@@ -450,7 +450,7 @@ where
                         let face = win[0]
                             .borrow()
                             .common_face(Rc::clone(&win[1]))
-                            .expect("Adjacent edges should share a face.");
+                            .expect("Adjacent edges should share a face");
                         // Get the face point calculated in equation 11 in \[Sederberg et al. 1998\]
                         let f_point = face_points[face.borrow().index].clone();
                         // Equation 18 in \[Sederberg et al. 1998\]. Radial faces are in ACW order, so win[0] is the
@@ -737,6 +737,152 @@ where
     }
 }
 
+impl<P> Clone for Tnurcc<P>
+where
+    P: Clone,
+{
+    fn clone(&self) -> Self {
+        let mut new_control_points = Vec::new();
+        let mut new_faces = Vec::new();
+        let mut new_edges = Vec::new();
+        let new_extraordinary_control_points;
+
+        // Clone control points (need still to set the reference edge)
+        for p in self.control_points.iter() {
+            let borrow = p.borrow();
+            let mut ncp = TnurccControlPoint::new(borrow.index, borrow.point.clone());
+
+            ncp.valence = borrow.valence;
+            new_control_points.push(Rc::new(RefCell::new(ncp)));
+        }
+
+        // Clone faces (need still to set the reference edge)
+        for f in self.faces.iter() {
+            let borrow = f.borrow();
+
+            // Transfer corners over from the control points of self to the new control points
+            let corners = [
+                borrow.corners[0]
+                    .as_ref()
+                    .map(|p| Rc::clone(&new_control_points[p.borrow().index])),
+                borrow.corners[1]
+                    .as_ref()
+                    .map(|p| Rc::clone(&new_control_points[p.borrow().index])),
+                borrow.corners[2]
+                    .as_ref()
+                    .map(|p| Rc::clone(&new_control_points[p.borrow().index])),
+                borrow.corners[3]
+                    .as_ref()
+                    .map(|p| Rc::clone(&new_control_points[p.borrow().index])),
+            ];
+            let index = borrow.index;
+
+            let nf = TnurccFace {
+                corners,
+                index,
+                edge: None,
+            };
+            new_faces.push(Rc::new(RefCell::new(nf)));
+        }
+
+        // Clone edges (need still to set the connections)
+        for e in self.edges.iter() {
+            let borrow = e.borrow();
+
+            let origin = Rc::clone(&new_control_points[borrow.origin.borrow().index]);
+            let dest = Rc::clone(&new_control_points[borrow.dest.borrow().index]);
+
+            let fl = borrow
+                .face_left
+                .as_ref()
+                .map(|f| Rc::clone(&new_faces[f.borrow().index]));
+            let fr = borrow
+                .face_right
+                .as_ref()
+                .map(|f| Rc::clone(&new_faces[f.borrow().index]));
+
+            let ne = TnurccEdge {
+                index: borrow.index,
+                connections: [const { None }; 4],
+                face_left: fl,
+                face_right: fr,
+                origin: Rc::clone(&origin),
+                dest: Rc::clone(&dest),
+                knot_interval: borrow.knot_interval,
+            };
+            let ne: Rc<RefCell<TnurccEdge<P>>> = Rc::new(RefCell::new(ne));
+            new_edges.push(ne);
+        }
+
+        // Set control point reference edges
+        new_control_points.iter().for_each(|p| {
+            let index = p.borrow().index;
+            p.borrow_mut().incoming_edge = self.control_points[index]
+                .borrow()
+                .incoming_edge
+                .as_ref()
+                .map(|e| Rc::clone(&new_edges[e.borrow().index]));
+        });
+
+        // Set face reference edges
+        new_faces.iter().for_each(|f| {
+            let index = f.borrow().index;
+            f.borrow_mut().edge = self.faces[index]
+                .borrow()
+                .edge
+                .as_ref()
+                .map(|e| Rc::clone(&new_edges[e.borrow().index]));
+        });
+
+        // Set edge connections
+        new_edges.iter().for_each(|e| {
+            let index = e.borrow().index;
+            e.borrow_mut().connections.iter_mut().enumerate().for_each(|(i, c)| {
+                *c = self.edges[index]
+                    .borrow()
+                    .connections[i]
+                    .as_ref()
+                    .map(|map_e| Rc::clone(&new_edges[map_e.borrow().index]));
+            });
+        });
+
+        new_extraordinary_control_points = self
+            .extraordinary_control_points
+            .iter()
+            .map(|p| Rc::clone(&new_control_points[p.borrow().index]))
+            .collect::<Vec<_>>();
+
+        Tnurcc {
+            edges: new_edges,
+            control_points: new_control_points,
+            extraordinary_control_points: new_extraordinary_control_points,
+            faces: new_faces,
+        }
+    }
+}
+
+impl<P> Drop for Tnurcc<P> {
+    fn drop(&mut self) {
+        for face in self.faces.iter() {
+            face.borrow_mut().corners.iter_mut().for_each(|o| *o = None);
+            face.borrow_mut().edge = None;
+        }
+
+        for cp in self.control_points.iter() {
+            cp.borrow_mut().incoming_edge = None;
+        }
+
+        for edge in self.edges.iter() {
+            edge.borrow_mut()
+                .connections
+                .iter_mut()
+                .for_each(|o| *o = None);
+            edge.borrow_mut().face_left = None;
+            edge.borrow_mut().face_right = None;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -913,7 +1059,7 @@ mod tests {
                 let common_face = e
                     .borrow()
                     .common_face(Rc::clone(&con))
-                    .expect("Connected edges must have a common face between them.");
+                    .expect("Connected edges must have a common face between them");
                 assert!(std::ptr::eq(
                     common_face.as_ref(),
                     e.borrow()
@@ -926,7 +1072,7 @@ mod tests {
                 let common_point = e
                     .borrow()
                     .common_point(Rc::clone(&con))
-                    .expect("Connected edges must have a common point between them.");
+                    .expect("Connected edges must have a common point between them");
 
                 // In order to check to make sure that the common points is the correct one,
                 // both the connection and orientation of the connected edge relative to the
@@ -966,7 +1112,7 @@ mod tests {
                 Rc::clone(&face_edge),
                 face_edge.borrow().face_side(Rc::clone(face)).unwrap(),
             )
-            .expect("Prevously tested assertion.")
+            .expect("Prevously tested assertion")
             .last()
             .expect("Iter of size greater than 0 should have a last element");
 
@@ -1174,7 +1320,32 @@ mod tests {
     #[test]
     fn t_nurcc_test_double_subdivide() {
         let mut surface = t_nurcc_subdivded_cube();
-        surface.global_subdivide().expect("Double subdivide should succeed.");
+        surface
+            .global_subdivide()
+            .expect("Double subdivide should succeed");
+        verify_tnurcc_control_points(&surface);
+        verify_tnurcc_edges(&surface);
+        verify_tnurcc_faces(&surface);
+    }
+
+    #[test]
+    fn t_nurcc_test_clone() {
+        use std::mem::drop;
+        let mut surface;
+        {
+            let clone = make_cube().unwrap();
+            surface = clone.clone();
+            drop(clone);
+        }
+
+        surface
+            .global_subdivide()
+            .expect("Cloned subdivide should succeed");
+
+        surface
+            .global_subdivide()
+            .expect("Cloned double subdivide should succeed");
+        
         verify_tnurcc_control_points(&surface);
         verify_tnurcc_edges(&surface);
         verify_tnurcc_faces(&surface);

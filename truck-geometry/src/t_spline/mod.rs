@@ -155,11 +155,11 @@ struct TnurccEdge<P> {
 /// Described in \[Sederberg et al. 2003\], building on material from \[Sederberg et al. 1998\].
 #[derive(Debug)]
 pub struct Tnurcc<P> {
-    edges: Vec<Rc<RefCell<TnurccEdge<P>>>>,
-    control_points: Vec<Rc<RefCell<TnurccControlPoint<P>>>>,
     #[allow(dead_code)]
     extraordinary_control_points: Vec<Rc<RefCell<TnurccControlPoint<P>>>>,
+    control_points: Vec<Rc<RefCell<TnurccControlPoint<P>>>>,
     faces: Vec<Rc<RefCell<TnurccFace<P>>>>,
+    edges: Vec<Rc<RefCell<TnurccEdge<P>>>>,
 }
 
 mod t_mesh;
